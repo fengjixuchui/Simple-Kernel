@@ -3,7 +3,7 @@
 
 #define fontarray font8x8_basic // Must be set up in UTF-8
 
-// The character print function can draw raw single-color bitmaps formatted liek this, given appropriate height and width values
+// The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
 char load_image[48] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
@@ -123,7 +123,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   // accidentally overwrite things in the loader block, we'll be OK. Really should be consulting/checking against the memmap to be sure, though.
   //... Would be much easier to print the whole memmap, once formatted string printing works.
 
-  //TODO: Check what this swapped_image buffer is running over. There's something under here. Requires working printf or equivalent.
+  //TODO: Check what this swapped_image buffer is running over. There's something under here. Requires working printf or equivalent (or, well, some kind of basic memory management)
 
 //  bitmap_bitswap(load_image, 12, 27, swapped_image);
 //  char swapped_image2[sizeof(load_image)];
@@ -461,7 +461,7 @@ void string_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * string, U
 } // end function
 
 //////////////////////////////////////////////////////
-/*
+
 void formatted_string_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * string, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
 {
   // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
@@ -701,13 +701,16 @@ void formatted_string_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char *
               break;
         } //end switch
       } //end while !format_end
-    }// end %
+      // add null-terminator '\0' to format_string
+      //output formatted part here
+      //string_anywhere_scaled(lfb_base_addr, format_string, height, width, HREZ, VREZ, font_color, highlight_color, x, y, scale);
+    }// end % and continue printing the string
 
     Output_render(lfb_base_addr, character, height, width, HREZ, VREZ, font_color, highlight_color, x, y, scale, item, formatting_subtractor, formatting_adder);
     item++;
   } // end while
 } // end function
-*/
+
 //////////////////////////////////////////////////////
 
 void Output_render(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * character, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 item, UINT32 formatting_subtractor, UINT32 formatting_adder)
