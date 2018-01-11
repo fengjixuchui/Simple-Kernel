@@ -7,4 +7,4 @@ Current Status: Got font rendering to work and string output. Need to implement 
 
 The currently uploaded code will not compile as-is. Kernel64.c is just here to show that this part of the project does also exist.   
   
-A full description of how to actually compile it, etc. will be added once I finish my to-do list and clean up the mess of code.
+A full description of how to actually compile it, etc. will be added once I finish my to-do list and clean up the mess of code. See the "Issues" section of this repo for some things on my to-do list.
