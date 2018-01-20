@@ -11,6 +11,6 @@ A full description of how to actually compile it, etc. will be added once I fini
 
 Note: As far as licensing is concerned, this will be licensed like https://github.com/KNNSpeed/Simple-UEFI-Bootloader, so here's a copy-pasteable citation:
 
-From KNNSpeed's "Simple Kernel":
-https://github.com/KNNSpeed/Simple-Kernel
-V0.x, [Date you got it]
+From KNNSpeed's "Simple Kernel":  
+https://github.com/KNNSpeed/Simple-Kernel  
+V0.x, [Date you got it]  
