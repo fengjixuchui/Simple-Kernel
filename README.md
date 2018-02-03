@@ -1,11 +1,42 @@
 # Simple-Kernel
-A development environment for building bare-metal x86-64 kernels, for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support has been included.
+A minimal, crossplatform development environment for building bare-metal x86-64 programs, designed for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. This system builds native exectuables for the builder's platform that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is included in the repository.
 
-**Coming Soon** -- See the "Releases" tab for some samples that can be used with the above bootloader.
+See "Issues" for my to-do list for the sample kernel.
 
-Current Status: Got font rendering to work and string output. See "Issues" for my to-do list.
+**Building a Program**
 
-A full description of how to compile custom kernels, etc. will be added as I finish my to-do list and clean up the mess of code. See the "Issues" section of this repo for some things on my to-do list.
+See the below "How to Build from Source" section for complete compilation instructions for each platform, and then all you need to do is put your code in "src" and "inc" in place of mine (leave the "startup" folder as-is). Once compiled, your program can be run in the same way as described in the "Releases" section of https://github.com/KNNSpeed/Simple-UEFI-Bootloader using a UEFI-supporting VM like Hyper-V or on actual hardware.
+
+Note that the entry point function (i.e. the "main" function) of your kernel should look like this, otherwise the kernel will fail to run:  
+
+```
+void kernel_main(LOADER_PARAMS * LP) // Loader Parameters  
+{  
+  
+}
+```  
+
+The LOADER_PARAMS data type is defined as the following structure:
+```
+typedef struct {
+  EFI_MEMORY_DESCRIPTOR  *Memory_Map;
+  EFI_RUNTIME_SERVICES   *RTServices;
+  GPU_CONFIG             *GPU_Configs;
+  EFI_FILE_INFO          *FileMeta;
+  void                   *RSDP;
+} LOADER_PARAMS;
+```
+
+Of those pointers, the only data type not defined by UEFI spec is `GPU_CONFIG`, which looks like this:
+
+```
+typedef struct {
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
+  UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
+} GPU_CONFIG;
+```
+
+You can find some relevant structures defined in "Kernel64.h" of the sample kernel, and the rest are defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory.
 
 **Target System Requirements:**  
 *These are the same as the bootloader's requirements. If your system can run the bootloader, you're all set.*  
