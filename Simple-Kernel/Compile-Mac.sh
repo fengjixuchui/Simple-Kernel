@@ -116,8 +116,8 @@ set +v
 
 set -v
 for f in $CurDir/src/*.c; do
-  echo "gcc" -ffreestanding -march=skylake -mtune=skylake -mfpmath=sse -mavx2 -m64 -fpie -DGNU_EFI_USE_MS_ABI -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "gcc" -ffreestanding -march=skylake -mtune=skylake -mfpmath=sse -mavx2 -m64 -fpie -DGNU_EFI_USE_MS_ABI -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "gcc" -ffreestanding -march=skylake -mtune=skylake -mfpmath=sse -mavx2 -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "gcc" -ffreestanding -march=skylake -mtune=skylake -mfpmath=sse -mavx2 -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
