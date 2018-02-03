@@ -9,7 +9,9 @@ See "Issues" for my to-do list for the sample kernel.
 
 See the below "How to Build from Source" section for complete compilation instructions for each platform, and then all you need to do is put your code in "src" and "inc" in place of mine (leave the "startup" folder as-is). Once compiled, your program can be run in the same way as described in the "Releases" section of https://github.com/KNNSpeed/Simple-UEFI-Bootloader using a UEFI-supporting VM like Hyper-V or on actual hardware.
 
-Note that the entry point function (i.e. the "main" function) of your kernel should look like this, otherwise the kernel will fail to run:  
+***Important Points to Consider:***
+
+The entry point function (i.e. the "main" function) of your program should look like this, otherwise the kernel will fail to run:  
 
 ```
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters  
@@ -38,7 +40,9 @@ typedef struct {
 } GPU_CONFIG;
 ```
 
-You can find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory.
+You can find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory. 
+
+You will also need to `#include` the "Efi" files from "startup" in your code: refer to the "Kernel64.h" file in the "inc" directory for an example. You may find it easiest to just include "Kernel64.h" in your code after removing any unnecessary function prototypes from it.
 
 **Target System Requirements**  
   
