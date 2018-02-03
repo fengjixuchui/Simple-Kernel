@@ -1,3 +1,22 @@
+//==================================================================================================================================
+//  Simple Kernel: Main Header
+//==================================================================================================================================
+//
+// Version 0.x
+//
+// Author:
+//  KNNSpeed
+//
+// Source Code:
+//  https://github.com/KNNSpeed/Simple-Kernel
+//
+// This file provides inclusions, #define switches, structure definitions, and function prototypes for a bare-metal x86-64 program
+// (also known as a 64-bit kernel). See Kernel64.c for further details about this program.
+//
+
+#ifndef _Kernel64_H
+#define _Kernel64_H
+
 /*
 In freestanding mode, the only available standard header files are: <float.h>,
 <iso646.h>, <limits.h>, <stdarg.h>, <stdbool.h>, <stddef.h>, and <stdint.h>
@@ -338,3 +357,5 @@ void bitmap_bitreverse(char * bitmap, UINT32 height, UINT32 width, char * output
 void bitmap_bytemirror(char * bitmap, UINT32 height, UINT32 width, char * output);
 
 //void print(char * text, ...);
+
+#endif
