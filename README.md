@@ -38,7 +38,7 @@ typedef struct {
 } GPU_CONFIG;
 ```
 
-You can find some relevant structures defined in "Kernel64.h" of the sample kernel, and the rest are defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory.
+You can find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory.
 
 **Target System Requirements**  
   
