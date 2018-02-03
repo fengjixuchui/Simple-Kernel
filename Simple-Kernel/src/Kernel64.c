@@ -1,5 +1,52 @@
+//==================================================================================================================================
+//  Simple Kernel: Kernel Entrypoint
+//==================================================================================================================================
+//
+// Version 0.x
+//
+// Author:
+//  KNNSpeed
+//
+// Source Code:
+//  https://github.com/KNNSpeed/Simple-Kernel
+//
+// This program is a small x86-64 program for use with the Simple UEFI Bootloader: https://github.com/KNNSpeed/Simple-UEFI-Bootloader.
+// It contains some functions that might prove useful in development of other bare-metal programs, and showcases some of the features
+// provided by the bootloader (e.g. Multi-GPU framebuffer support).
+//
+// The main function of this program, defined as "kernel_main" in the accompanying compile scripts, is passed a pointer to the following
+// structure from the bootloader:
+/*
+  typedef struct {
+    EFI_MEMORY_DESCRIPTOR  *Memory_Map;   // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    EFI_RUNTIME_SERVICES   *RTServices;   // UEFI Runtime Services
+    GPU_CONFIG             *GPU_Configs;  // Information about available graphics output devices; see below for details
+    EFI_FILE_INFO          *FileMeta;     // Kernel64 file metadata
+    void                   *RSDP;         // A pointer to the RSDP ACPI table
+  } LOADER_PARAMS;
+*/
+//
+// GPU_CONFIG is a custom structure that is defined as follows:
+//
+/*
+  typedef struct {
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // An array of EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structs defining each available framebuffer
+    UINT64                              NumberOfFrameBuffers; // The number of structs in the array (== the number of available framebuffers)
+  } GPU_CONFIG;
+*/
+//
+// The header file, Kernel64.h, contains definitions for the data types of each pointer in the above structures for easy reference.
+//
+// Note: As mentioned in the bootloader's embedded documentation, GPU_Configs provides access to linear framebuffer addresses for directly
+// drawing to connected screens: specifically one for each active display per GPU. Typically there is one active display per GPU, but it is
+// up to the GPU firmware maker to deterrmine that. See "12.10 Rules for PCI/AGP Devices" in the UEFI Specification 2.7 Errata A for more
+// details: http://www.uefi.org/specifications
+//
 
 #include "Kernel64.h"
+
+#define MAJOR_VER 0
+#define MINOR_VER 'x'
 
 #define fontarray font8x8_basic // Must be set up in UTF-8
 
