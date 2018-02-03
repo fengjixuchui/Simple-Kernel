@@ -163,7 +163,7 @@ set -v
 #"gcc" -nostdlib -Wl,-e,_kernel_main -Wl,-dead_strip -Wl,-pie -Wl,-map,output.map -Wl,-pagezero_size,0x0 -o "Kernel64-Sandybridge.mach64" @"objects.list" -lSystem # LC_MAIN, requires DYLD
 "strip" "Kernel64-Sandybridge.mach64"
 set +v
-# Remove -s in the above command to keep debug symbols in the output binary.
+# Comment the above strip command to keep debug symbols in the output binary.
 
 #
 # Output the program size
