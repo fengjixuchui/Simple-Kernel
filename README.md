@@ -46,13 +46,13 @@ typedef struct {
 } GPU_CONFIG;
 ```
 
-You can find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory. 
+You will find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory. 
 
 You will also need to `#include` the "Efi" files from "startup" in your code: refer to the "Kernel64.h" file in the "inc" directory for an example. You may find it easiest to just include "Kernel64.h" in your code after removing any unnecessary function prototypes from it.
 
 **Target System Requirements**  
   
-*These are the same as the bootloader's requirements. If your system can run the bootloader, you're all set.*  
+*These are the same as the bootloader's requirements. If your target system can run the bootloader, you're all set.*  
   
 - x86-64 architecture  
 - Secure Boot must be disabled  
@@ -155,6 +155,7 @@ V0.x (2/2/2018) - Initial upload of environment and compilable sample. Not yet g
 - [Marcel Sondaar](https://mysticos.combuster.nl/) for the original public domain 8x8 font
 - [Daniel Hepper](https://github.com/dhepper/) for converting the 8x8 font into [public domain C headers](https://github.com/dhepper/font8x8)
 - [Intel Corporation](https://www.intel.com/content/www/us/en/homepage.html) for EfiTypes.h, the x86-64 EfiBind.h, and EfiError.h (the ones used in this project are derived from [TianoCore EDK II](https://github.com/tianocore/edk2/))
+- [UEFI Forum](http://www.uefi.org/) for the [UEFI Specification Version 2.7 (Errata A)](http://www.uefi.org/sites/default/files/resources/UEFI%20Spec%202_7_A%20Sept%206.pdf), as well as for [previous UEFI 2.x specifications](http://www.uefi.org/specifications)
 - [PhoenixWiki](http://wiki.phoenix.com/wiki/index.php/Category:UEFI) for very handy documentation on UEFI functions
 - [The GNU project](https://www.gnu.org/home.en.html) for [GCC](https://gcc.gnu.org/), a fantastic and versatile compiler, and [Binutils](https://www.gnu.org/software/binutils/), equally fantastic binary utilities
 - [MinGW-w64](https://mingw-w64.org/doku.php) for porting GCC to Windows
