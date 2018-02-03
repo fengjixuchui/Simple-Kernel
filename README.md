@@ -1,7 +1,7 @@
 # Simple-Kernel
 A minimal, cross-platform development environment for building bare-metal x86-64 programs. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. 
 
-This build system compiles native executables for the builder's platform (Windows, Mac, or Linux) that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is included in the repository.
+This build system compiles native executables for the builder's platform (Windows, Mac, or Linux) that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is also included in this repository.
 
 See "Issues" for my to-do list for the sample kernel.
 
