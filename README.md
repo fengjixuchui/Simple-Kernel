@@ -1,16 +1,35 @@
 # Simple-Kernel
-A bare-metal x86-64 kernel for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader
+A development environment for building bare-metal x86-64 kernels, for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support has been included.
 
 **Coming Soon** -- See the "Releases" tab for some samples that can be used with the above bootloader.
 
-Current Status: Got font rendering to work and string output. Need to implement formatted text output (i.e. printf's '%' modifier), and clean up the code.
+Current Status: Got font rendering to work and string output. See "Issues" for my to-do list.
 
-The currently uploaded code will not compile as-is. Kernel64.c is just here to show that this part of the project does also exist.   
+A full description of how to compile custom kernels, etc. will be added as I finish my to-do list and clean up the mess of code. See the "Issues" section of this repo for some things on my to-do list.
+
+**Target System Requirements:**  
+*These are the same as the bootloader's requirements. If your system can run the bootloader, you're all set.*  
   
-A full description of how to actually compile it, etc. will be added once I finish my to-do list and clean up the mess of code. See the "Issues" section of this repo for some things on my to-do list.
+- x86-64 architecture  
+- Secure Boot must be disabled  
+- More than 4GB RAM (though it seems to work OK with less, e.g. Hyper-V with only 1GB)  
+- A graphics card (Intel, AMD, NVidia, etc.) **with UEFI GOP support**  
+- A keyboard  
 
-Note: As far as licensing is concerned, this will be licensed like https://github.com/KNNSpeed/Simple-UEFI-Bootloader, so here's a copy-pasteable citation:
+The earliest GPUs with UEFI GOP support were released around the Radeon HD 7xxx series (~2011). Anything that age or newer should have UEFI GOP support, though older models, like early 7970s, required owners to contact GPU vendors to get UEFI-compatible firmware. On Windows, you can check if your graphics card(s) have UEFI GOP support by downloading TechPowerUp's GPU-Z utility and seeing whether or not the UEFI checkbox is checked. If it is, you're all set!  
+  
+*NOTE: You need to check each graphics card if there is a mix, as you will only be able to use the ones with UEFI GOP support. Per the system requirements above, you need at least one compliant device.*  
+  
+**License and Crediting:**  
+  
+Please see the LICENSE file for information on the licenses covering the code created for and used in this project. The file also contains important information on how to credit this project when using parts of it in other projects.  
+  
+I tried to keep licensing for original code reasonable, concise, and permissive, and all I'm really asking for is appropriate citation (see the "Custom Attribution License" section of the file). Even if the only section you looked at was the Custom Attribution License section, that would be great (it's pretty short!). 
 
+***Easy, 20-Second Summary:***
+
+If you want to use, copy, modify, and/or distribute my source code, in other words the code in this repository not already covered under any license, simply copy & paste the below 3 lines somewhere reasonable like in an acknowledgements or references section, as a comment in the code, at the bottom of a README or in a LICENSE file, etc., change "[Date you got it]" to the date you acquired my code, and don't sue me if something goes wrong - especially since there's no warranty (and sometimes firmware vendors just don't follow the UEFI spec in unforeseen ways, but it would be great if you posted an issue so I could fix it!). Thanks!
+  
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
 V0.x, [Date you got it]  
