@@ -4,9 +4,6 @@ In freestanding mode, the only available standard header files are: <float.h>,
 (C99 standard 4.6).
 */
 
-//#include <efi.h> // For calling runtime services
-//#include <efilib.h> // Eventually this will be removed and only the necessary structs kept
-
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
