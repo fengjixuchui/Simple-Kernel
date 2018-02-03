@@ -48,7 +48,7 @@ typedef struct {
 
 You will find some relevant structures defined in "Kernel64.h" of the sample kernel, with the rest defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory. 
 
-You will also need to `#include` the "Efi" files from "startup" in your code: refer to the "Kernel64.h" file in the "inc" directory for an example. You may find it easiest to just include "Kernel64.h" in your code after removing any unnecessary function prototypes from it.
+You will also need to `#include` the "Efi" files from "startup" in your code: refer to the "Kernel64.h" file in the "inc" directory for an example. You may find it easiest to just ```#include "Kernel64.h"``` in your code after removing unnecessary function prototypes from the file.
 
 **Target System Requirements**  
   
