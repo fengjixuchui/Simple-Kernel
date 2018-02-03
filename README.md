@@ -58,7 +58,7 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
 
 2. Open Terminal in the "Simple-Kernel" folder and run "./Compile-Mac.sh"
 
-    *That's it! It should compile and a binary called "Kernel64.Mach64" will be output into the "Backend" folder.*
+    *That's it! It should compile and a binary called "Kernel64.mach64" will be output into the "Backend" folder.*
   
 ***Linux:***  
 
