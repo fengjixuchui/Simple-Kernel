@@ -1,0 +1,104 @@
+//=============================================================================
+//  Software License Information
+//=============================================================================
+//
+// This file contains information about the licenses covering code created for
+// and used in this project.
+//
+
+The files "EfiBind.h," "EfiError.h," and "EfiTypes.h" are used under the terms
+of the 2-Clause BSD License included at the end of this file.
+
+The included font headers, as well as "memmove.c," "memcmp.c," "memcpy.c," and
+"memset.c," are in the public domain.
+
+//=============================================================================
+//  Custom Attribution License
+//=============================================================================
+
+All remaining source not covered by a license is released under the following
+license:
+
+Copyright (c) 2017-2018 KNNSpeed
+
+This software is provided free of charge in hopes that it may be useful, and it
+can be downloaded and used in whole or in part. However, by using, copying,
+modifying, and/or distributing this software you agree, implicitly, to the
+following terms:
+
+1) You will appropriately credit this project when and where code directly
+derived from it is implemented, even if what is implemented is just a small part
+of this codebase.
+
+Below are examples of appropriate citations; pick your favorite, put it
+somewhere reasonable like in an acknowledgements or references section, as a
+comment in the code, at the bottom of a README or in a LICENSE file, etc., and
+change "[Date you got it]" to the date you acquired my code. Note that these are
+just examples: the important point is that the exact original source is
+identified and attributed.
+
+Short:
+// From V0.x of https://github.com/KNNSpeed/Simple-Kernel
+
+Medium:
+// From KNNSpeed's "Simple Kernel," V0.x:
+// https://github.com/KNNSpeed/Simple-Kernel
+
+Long (Recommended):
+// From KNNSpeed's "Simple Kernel":
+// https://github.com/KNNSpeed/Simple-Kernel
+// V0.x, [Date you got it]
+
+The last line of the long form might look like:
+V0.x, January 8, 2018
+
+2) THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+Failure to honor this license will cause annoying little elves to appear at your
+doorstep, and they will pester you without rest until the terms are satisfied.
+...Not really: for as long as you do not comply with this license, you are
+simply not permitted to do anything with the software. This includes even
+printing it out and brushing your cat's teeth with it... Unless, of course, you
+printed an appropriate citation along with it.
+
+//=============================================================================
+// 2-Clause BSD License
+//=============================================================================
+
+2-Clause BSD License: http://opensource.org/licenses/bsd-license.php
+
+Copyright (c) 2004 - 2016, Intel Corporation. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+* Redistributions of source code must retain the above copyright
+  notice, this list of conditions and the following disclaimer.
+  
+* Redistributions in binary form must reproduce the above copyright
+  notice, this list of conditions and the following disclaimer in
+  the documentation and/or other materials provided with the
+  distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+//=============================================================================
+End of File
