@@ -139,3 +139,17 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
     *That's it! It should compile and a binary called "Kernel64.elf" will be output into the "Backend" folder.*
 
     For more information about building GCC and Binutils, see these: http://www.linuxfromscratch.org/blfs/view/cvs/general/gcc.html & http://www.linuxfromscratch.org/lfs/view/development/chapter06/binutils.html  
+
+**Change Log**
+
+V0.x (2/2/2018) - Initial upload of environment and compilable sample. Not yet given a version number.
+
+**Acknowledgements**  
+  
+- [Marcel Sondaar](https://mysticos.combuster.nl/) for the original public domain 8x8 font
+- [Daniel Hepper](https://github.com/dhepper/) for converting the 8x8 font into [public domain C headers](https://github.com/dhepper/font8x8)
+- [Intel Corporation](https://www.intel.com/content/www/us/en/homepage.html) for EfiTypes.h, the x86-64 EfiBind.h, and EfiError.h (the ones used in this project are derived from [TianoCore EDK II](https://github.com/tianocore/edk2/))
+- [PhoenixWiki](http://wiki.phoenix.com/wiki/index.php/Category:UEFI) for very handy documentation on UEFI functions
+- The [GNU project](https://www.gnu.org/home.en.html) for [GCC](https://gcc.gnu.org/), a fantastic and versatile compiler, and [Binutils](https://www.gnu.org/software/binutils/), equally fantastic binary utilities
+- [MinGW-w64](https://mingw-w64.org/doku.php) for porting GCC to Windows
+- [LLVM](https://llvm.org/) for providing a feature-rich and efficient native compiler suite for Apple platforms
