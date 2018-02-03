@@ -38,7 +38,8 @@ typedef struct {
 
 You can find some relevant structures defined in "Kernel64.h" of the sample kernel, and the rest are defined in the "EfiBind.h" and "EfiTypes.h" files in the "startup" directory.
 
-**Target System Requirements:**  
+**Target System Requirements**  
+  
 *These are the same as the bootloader's requirements. If your system can run the bootloader, you're all set.*  
   
 - x86-64 architecture  
@@ -51,7 +52,7 @@ The earliest GPUs with UEFI GOP support were released around the Radeon HD 7xxx 
   
 *NOTE: You need to check each graphics card if there is a mix, as you will only be able to use the ones with UEFI GOP support. Per the system requirements above, you need at least one compliant device.*  
   
-**License and Crediting:**  
+**License and Crediting**  
   
 Please see the LICENSE file for information on the licenses covering the code created for and used in this project. The file also contains important information on how to credit this project when using parts of it in other projects.  
   
@@ -65,7 +66,7 @@ From KNNSpeed's "Simple Kernel":
 https://github.com/KNNSpeed/Simple-Kernel  
 V0.x, [Date you got it]  
 
-**How to Build from Source:**  
+**How to Build from Source**  
   
 Windows: Requires MinGW-w64 based on GCC 7.1.0 or later  
 Mac: Requires Mac OS Sierra or later with the latest XCode Command Line Tools for the OS  
