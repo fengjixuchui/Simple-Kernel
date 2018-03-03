@@ -80,7 +80,7 @@ V0.x, [Date you got it]
   
 ***Slightly More Detailed License Summary:***
   
-If you want to use, copy, modify, and/or distribute the source code, in other words the code in this repository not already covered under any license, simply copy & paste the below 3 lines somewhere reasonable like in an acknowledgements or references section, as a comment in the code, at the bottom of a README or in a LICENSE file, etc., change "[Date you got it]" to the date you acquired my code, and don't sue me if something goes wrong - especially since there's no warranty (and sometimes firmware vendors just don't follow the UEFI spec in unforeseen ways, but it would be great if you posted an issue so I could fix it!). Thanks!
+If you want to use, copy, modify, and/or distribute this project's original source code, in other words the code in this repository not already covered under any license, simply copy & paste the below 3 lines somewhere reasonable like in an acknowledgements or references section, as a comment in the code, at the bottom of a README or in a LICENSE file, etc. Then, change "[Date you got it]" to the date you acquired the code, and don't sue me if something goes wrong - especially since there's no warranty (and sometimes firmware vendors just don't follow the UEFI spec in unforeseen ways, but it would be great if you posted an issue so I could fix it!). Thanks!
   
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
