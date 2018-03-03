@@ -13,11 +13,11 @@ The included font headers, as well as "memmove.c," "memcmp.c," "memcpy.c," and
 "memset.c," are in the public domain.
 
 //=============================================================================
-//  Custom Attribution License
+//  Custom Attribution License ("PD with Credit")
 //=============================================================================
 
 All remaining source not covered by a license is released under the following
-license:
+license (note the copyright is non-exclusive):
 
 Copyright (c) 2017-2018 KNNSpeed
 
