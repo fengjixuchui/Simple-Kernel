@@ -1,4 +1,4 @@
-# Simple-Kernel
+## Simple-Kernel
 A minimal, cross-platform development environment for building bare-metal x86-64 programs. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. 
 
 **Version 0.x**
