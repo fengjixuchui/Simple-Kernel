@@ -90,7 +90,7 @@ V0.x, [Date you got it]
   
 **How to Build from Source**  
   
-Windows: Requires MinGW-w64 based on GCC 7.1.0 or later  
+Windows: Requires MinGW-w64 based on GCC 8.1.0 or later  
 Mac: Requires Mac OS Sierra or later with the latest XCode Command Line Tools for the OS  
 Linux: Requires GCC 8.0.0 or later and Binutils 2.29.1 or later  
   
