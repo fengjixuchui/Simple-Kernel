@@ -2,7 +2,7 @@
 #
 # =================================
 #
-# RELEASE VERSION 1.0
+# RELEASE VERSION 1.01
 #
 # GCC Kernel64 Linux Compile Script
 #
@@ -87,8 +87,8 @@ done < $CurDir/h_files.txt
 
 #set -v
 #while read f; do
-#  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
-#  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
+#  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
+#  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
 #done < $CurDir/c_files_linux.txt
 #set +v
 
@@ -98,8 +98,8 @@ done < $CurDir/h_files.txt
 
 set -v
 for f in $CurDir/startup/*.c; do
-  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
@@ -119,8 +119,8 @@ set +v
 # "gcc" version
 #set -v
 #for f in $CurDir/startup/*.s; do
-#  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
-#  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
+#  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
+#  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
 #done
 #set +v
 
@@ -130,8 +130,8 @@ set +v
 
 set -v
 for f in $CurDir/src/*.c; do
-  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
@@ -168,9 +168,9 @@ done
 # NOTE: Linkerscripts may be needed for bigger projects
 #
 
-# "$GCC_FOLDER_NAME/bin/gcc" -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -T$LinkerScript -static-pie -nostdlib -s -Wl,--warn-common -Wl,--no-undefined -Wl,-e,kernel_main -Wl,-z,text -Wl,-z,max-page-size=0x1000 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.elf" @"objects.list"
+# "$GCC_FOLDER_NAME/bin/gcc" -march=sandybridge -mtune=sandybridge -mavx -T$LinkerScript -static-pie -nostdlib -s -Wl,--warn-common -Wl,--no-undefined -Wl,-e,kernel_main -Wl,-z,text -Wl,-z,max-page-size=0x1000 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.elf" @"objects.list"
 set -v
-"$GCC_FOLDER_NAME/bin/gcc" -march=sandybridge -mtune=sandybridge -mfpmath=sse -mavx -static-pie -nostdlib -s -Wl,--warn-common -Wl,--no-undefined -Wl,-e,kernel_main -Wl,-z,text -Wl,-z,max-page-size=0x1000 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.elf" @"objects.list"
+"$GCC_FOLDER_NAME/bin/gcc" -march=sandybridge -mtune=sandybridge -mavx -static-pie -nostdlib -s -Wl,--warn-common -Wl,--no-undefined -Wl,-e,kernel_main -Wl,-z,text -Wl,-z,max-page-size=0x1000 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.elf" @"objects.list"
 set +v
 # Remove -s in the above command to keep debug symbols in the output binary.
 
