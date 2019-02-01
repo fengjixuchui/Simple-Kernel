@@ -156,10 +156,12 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
 
     For more information about building GCC and Binutils, see these: http://www.linuxfromscratch.org/blfs/view/cvs/general/gcc.html & http://www.linuxfromscratch.org/lfs/view/development/chapter06/binutils.html  
 
-**Change Log**
-
-V0.x (2/2/2018) - Initial upload of environment and compilable sample. Not yet given a version number.
-
+**Change Log**  
+  
+V0.y (2/1/2019) - Major code cleanup, added printf() and a whole host of text-displaying functions, resolved issues #5 and #6. No new binaries will be made for this version.
+  
+V0.x (2/2/2018) - Initial upload of environment and compilable sample. Not yet given a version number.  
+  
 **Acknowledgements**  
   
 - [Marcel Sondaar](https://mysticos.combuster.nl/) for the original public domain 8x8 font
