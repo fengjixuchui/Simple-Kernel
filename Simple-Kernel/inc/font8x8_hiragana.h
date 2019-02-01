@@ -1,9 +1,9 @@
-/** 
+/**
  * 8x8 monochrome bitmap fonts for rendering
  * Author: Daniel Hepper <daniel@hepper.net>
- * 
+ *
  * License: Public Domain
- * 
+ *
  * Based on:
  * // Summary: font8x8.h
  * // 8x8 monochrome bitmap fonts for rendering
@@ -14,13 +14,16 @@
  * //
  * // License:
  * //     Public Domain
- * 
+ *
  * Fetched from: http://dimensionalrift.homelinux.net/combuster/mos3/?p=viewsource&file=/modules/gfx/font8_8.asm
  **/
 
+#ifndef _FONT8X8_HIRAGANA_H
+#define _FONT8X8_HIRAGANA_H
+
 // Contains an 8x8 font map for unicode points U+3040 - U+309F (Hiragana)
 // Constant: font8x8_3040
-char font8x8_hiragana[96][8] = {
+const unsigned char font8x8_hiragana[96][8] = {
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},   // U+3040
     { 0x04, 0x3F, 0x04, 0x3C, 0x56, 0x4D, 0x26, 0x00},   // U+3041 (Hiragana a)
     { 0x04, 0x3F, 0x04, 0x3C, 0x56, 0x4D, 0x26, 0x00},   // U+3042 (Hiragana A)
@@ -118,3 +121,5 @@ char font8x8_hiragana[96][8] = {
     { 0x20, 0x40, 0x14, 0x24, 0x08, 0x18, 0x06, 0x00},   // U+309E (Hiragana voiced iteration mark)
     { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}    // U+309F
 };
+
+#endif /* _FONT8X8_HIRAGANA_H */

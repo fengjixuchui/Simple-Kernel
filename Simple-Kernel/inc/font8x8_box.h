@@ -1,9 +1,9 @@
-/** 
+/**
  * 8x8 monochrome bitmap fonts for rendering
  * Author: Daniel Hepper <daniel@hepper.net>
- * 
+ *
  * License: Public Domain
- * 
+ *
  * Based on:
  * // Summary: font8x8.h
  * // 8x8 monochrome bitmap fonts for rendering
@@ -14,13 +14,16 @@
  * //
  * // License:
  * //     Public Domain
- * 
+ *
  * Fetched from: http://dimensionalrift.homelinux.net/combuster/mos3/?p=viewsource&file=/modules/gfx/font8_8.asm
  **/
 
+#ifndef _FONT8X8_BOX_H
+#define _FONT8X8_BOX_H
+
 // Constant: font8x8_2500
 // Contains an 8x8 font map for unicode points U+2500 - U+257F (box drawing)
-char font8x8_box[128][8] = {
+const unsigned char font8x8_box[128][8] = {
     { 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00},   // U+2500 (thin horizontal)
     { 0x00, 0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00, 0x00},   // U+2501 (thick horizontal)
     { 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08},   // U+2502 (thin vertical)
@@ -150,3 +153,5 @@ char font8x8_box[128][8] = {
     { 0x00, 0x00, 0x00, 0x0F, 0xFF, 0x00, 0x00, 0x00},   // U+257E (right L, left H)
     { 0x18, 0x18, 0x18, 0x18, 0x08, 0x08, 0x08, 0x08}    // U+257F (up H, down L)
 };
+
+#endif /* _FONT8X8_BOX_H */
