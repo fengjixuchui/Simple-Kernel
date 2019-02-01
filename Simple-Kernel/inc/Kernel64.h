@@ -2,7 +2,7 @@
 //  Simple Kernel: Main Header
 //==================================================================================================================================
 //
-// Version 0.x
+// Version 0.y
 //
 // Author:
 //  KNNSpeed
@@ -28,7 +28,6 @@ In freestanding mode, the only available standard header files are: <float.h>,
 #include <stdint.h>
 #include <float.h>
 #include <stdarg.h>
-#include "font8x8.h"
 
 #include "EfiBind.h"
 #include "EfiTypes.h"
@@ -340,22 +339,59 @@ typedef struct {
   void                   *RSDP;
 } LOADER_PARAMS;
 
-void Blackscreen(EFI_PHYSICAL_ADDRESS lfb_base_addr, UINT32 HREZ, UINT32 VREZ);
-void Colorscreen(EFI_PHYSICAL_ADDRESS lfb_base_addr, UINT32 HREZ, UINT32 VREZ, UINT32 color);
-void single_pixel(EFI_PHYSICAL_ADDRESS lfb_base_addr, UINT32 x, UINT32 y, UINT32 HREZ, UINT32 VREZ, UINT32 color);
+//
+// Anything below this line (except the #endif at the very bottom) is safe to
+// remove without breaking compatibility with the Simple UEFI Bootloader. Useful
+// if you wanted to make your own kernel from scratch.
+//
 
-void single_char(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * character, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color);
-void single_char_anywhere(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * character, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y);
-void single_char_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * character, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+#define systemfont font8x8_basic // Must be set up in UTF-8
 
-void string_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * string, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
-void formatted_string_anywhere_scaled(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * string, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
-void Output_render(EFI_PHYSICAL_ADDRESS lfb_base_addr, char * character, UINT32 height, UINT32 width, UINT32 HREZ, UINT32 VREZ, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 item, UINT32 formatting_subtractor, UINT32 formatting_adder);
+typedef struct {
+	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;
+	UINT32                             height; // Character font height
+	UINT32                             width; // Character font width (in bits)
+	UINT32                             font_color;
+	UINT32                             highlight_color;
+  UINT32                             background_color;
+	UINT32                             x; // Top leftmost x-coord
+	UINT32                             y; // top leftmost y-coord
+	UINT32                             scale; // Output scale for font
+  UINT32                             index; // Global string index for printf, etc. to keep track of cursor's postion
+} GLOBAL_PRINT_INFO_STRUCT;
+
+GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
+void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
+
+void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
+void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color);
+
+void Resetdefaultcolorscreen(void);
+void Resetdefaultscreen(void);
+
+void single_pixel(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 x, UINT32 y, UINT32 color);
+
+void single_char(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color);
+void single_char_anywhere(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y);
+void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+
+void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, char * string, ...);
+void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
+
+void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
 
 void bitmap_bitswap(char * bitmap, UINT32 height, UINT32 width, char * output);
 void bitmap_bitreverse(char * bitmap, UINT32 height, UINT32 width, char * output);
 void bitmap_bytemirror(char * bitmap, UINT32 height, UINT32 width, char * output);
 
-//void print(char * text, ...);
+int kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_list ap);
+int snprintf(char *str, size_t size, const char *format, ...);
+int vsnprintf(char *str, size_t size, const char *format, va_list ap);
+int sprintf(char *buf, const char *cfmt, ...);
+int vsprintf(char *buf, const char *cfmt, va_list ap);
+int printf(const char *fmt, ...);
 
-#endif
+// Don't remove this #endif
+#endif /* _Kernel64_H */
