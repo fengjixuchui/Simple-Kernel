@@ -1,7 +1,7 @@
 ## Simple-Kernel
 A minimal, cross-platform development environment for building bare-metal x86-64 programs. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader. 
 
-**Version 0.x**
+**Version 0.y**
 
 This build system compiles native executables for the builder's platform (Windows, Mac, or Linux) that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is also included in this repository.
 
@@ -76,7 +76,7 @@ Please see the LICENSE file for further information on all licenses covering cod
   
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
-V0.x, [Date you got it]  
+V0.y, [Date you got it]  
   
 ***Slightly More Detailed License Summary:***
   
@@ -84,7 +84,7 @@ If you want to use, copy, modify, and/or distribute this project's original sour
   
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
-V0.x, [Date you got it]  
+V0.y, [Date you got it]  
   
 (As mentioned in the TL;DR, please see the LICENSE file for further information on all licenses covering code created for and used in this project.)  
   
