@@ -2,7 +2,7 @@
 #
 # =================================
 #
-# RELEASE VERSION 1.01
+# RELEASE VERSION 1.02
 #
 # GCC/Clang Kernel64 Mac Compile Script
 #
@@ -82,8 +82,8 @@ done < $CurDir/h_files.txt
 
 #set -v
 #while read f; do
-#  echo "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
-#  "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
+#  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
+#  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "$f"
 #done < $CurDir/c_files_mac.txt
 #set +v
 
@@ -93,8 +93,8 @@ done < $CurDir/h_files.txt
 
 set -v
 for f in $CurDir/startup/*.c; do
-  echo "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
@@ -116,8 +116,8 @@ set +v
 
 set -v
 for f in $CurDir/src/*.c; do
-  echo "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "gcc" -ffreestanding -march=sandybridge -mtune=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
