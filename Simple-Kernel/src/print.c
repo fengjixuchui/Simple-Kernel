@@ -40,25 +40,6 @@
  *
  *	@(#)subr_prf.c	8.3 (Berkeley) 1/21/94
  */
-/*
-typedef unsigned long size_t;
-typedef long ssize_t;
-#ifdef __64BIT__
-typedef unsigned long long uintmax_t;
-typedef long long intmax_t;
-#else
-typedef unsigned int uintmax_t;
-typedef int intmax_t;
-#endif
-*/
-// typedef unsigned char u_char;
-// typedef unsigned int u_int;
-// typedef unsigned long u_long;
-//typedef unsigned short u_short;
-// typedef unsigned long long u_quad_t;
-// typedef long long quad_t;
-//typedef unsigned long uintptr_t;
-//typedef long ptrdiff_t;
 
 #include "Kernel64.h"
 
