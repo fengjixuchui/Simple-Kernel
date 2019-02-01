@@ -5,11 +5,7 @@ A minimal, cross-platform development environment for building bare-metal x86-64
 
 This build system compiles native executables for the builder's platform (Windows, Mac, or Linux) that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is also included in this repository.
 
-See "Issues" for my to-do list for the included sample kernel, and see the "Releases" tab of this project for executable binary forms of it. Apologies to AMD Ryzen users: I don't know what to replace the below compiler options with to optimize for AMD systems (I don't have any...):
-
-```
--march=skylake
-```
+See "Issues" for my to-do list for the included sample kernel, and see the "Releases" tab of this project for executable binary forms of it. Apologies to AMD Ryzen users: I can't test Ryzen binaries as I don't have any Ryzen machines. The build scripts are provided with the caveat that they ought to produce usable binaries (I don't see why they wouldn't).
 
 **Building a Program**
 
