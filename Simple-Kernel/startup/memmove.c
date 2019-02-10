@@ -32,11 +32,17 @@ void * memmove (void *dest, const void *src, size_t len)
 // The code below this comment is subject to the custom attribution license found
 // here: https://github.com/KNNSpeed/Simple-Kernel/blob/master/LICENSE_KERNEL
 //
-// AVX Memmove V1.0
+// AVX Memmove V1.1
 // Minimum requirement: x86_64 CPU with SSE2, but AVX2 or later is recommended
 //
 // Overlapping memory regions are supported.
 //
+
+#ifdef __clang__
+#define __m128i_u __m128i
+#define __m256i_u __m256i
+#define __m512i_u __m512i
+#endif
 
 #ifdef __AVX512F__
 #define BYTE_ALIGNMENT 0x3F // For 64-byte alignment
@@ -741,11 +747,11 @@ void * memmove_128bit_u(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+      _mm_storeu_si128(d++, _mm_lddqu_si128(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm_storeu_si128(--nextd, _mm_lddqu_si128(--nexts));
   }
   return dest;
 }
@@ -926,11 +932,11 @@ void * memmove_256bit_u(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+      _mm256_storeu_si256(d++, _mm256_lddqu_si256(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm256_storeu_si256(--nextd, _mm256_lddqu_si256(--nexts));
   }
   return dest;
 }
@@ -1108,11 +1114,11 @@ void * memmove_512bit_u(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+      _mm512_storeu_si512(d++, _mm512_loadu_si512(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm512_storeu_si512(--nextd, _mm512_loadu_si512(--nexts));
   }
   return dest;
 }
@@ -1539,11 +1545,11 @@ void * memmove_128bit_a(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+      _mm_store_si128(d++, _mm_load_si128(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm_store_si128(--nextd, _mm_load_si128(--nexts));
   }
   return dest;
 }
@@ -1724,11 +1730,11 @@ void * memmove_256bit_a(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+        _mm256_store_si256(d++, _mm256_load_si256(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm256_store_si256(--nextd, _mm256_load_si256(--nexts));
   }
   return dest;
 }
@@ -1907,11 +1913,11 @@ void * memmove_512bit_a(void *dest, const void *src, size_t len)
 
   if (d < s)
     while (d != nextd)
-      *d++ = *s++;
+      _mm512_store_si512(d++, _mm512_load_si512(s++));
   else
   {
     while (nextd != d)
-      *--nextd = *--nexts;
+      _mm512_store_si512(--nextd, _mm512_load_si512(--nexts));
   }
   return dest;
 }

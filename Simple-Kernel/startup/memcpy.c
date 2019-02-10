@@ -24,7 +24,7 @@ void * memcpy (void *dest, const void *src, size_t len)
 // The code below this comment is subject to the custom attribution license found
 // here: https://github.com/KNNSpeed/Simple-Kernel/blob/master/LICENSE_KERNEL
 //
-// AVX Memcpy V1.0
+// AVX Memcpy V1.1
 // Minimum requirement: x86_64 CPU with SSE2, but AVX2 or later is recommended
 //
 // Overlapping regions are not supported. See memmove instead.
@@ -32,6 +32,12 @@ void * memcpy (void *dest, const void *src, size_t len)
 // Memmove also contains a discussion about microarchitecture that
 // also applies to this file.
 //
+
+#ifdef __clang__
+#define __m128i_u __m128i
+#define __m256i_u __m256i
+#define __m512i_u __m512i
+#endif
 
 #ifdef __AVX512F__
 #define BYTE_ALIGNMENT 0x3F // For 64-byte alignment
@@ -437,7 +443,7 @@ void * memcpy_128bit_u(void *dest, const void *src, size_t len)
   __m128i_u* d = (__m128i_u*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm_storeu_si128(d++, _mm_lddqu_si128(s++));
 
   return dest;
 }
@@ -539,7 +545,7 @@ void * memcpy_256bit_u(void *dest, const void *src, size_t len)
   __m256i_u* d = (__m256i_u*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm256_storeu_si256(d++, _mm256_lddqu_si256(s++));
 
   return dest;
 }
@@ -638,7 +644,7 @@ void * memcpy_512bit_u(void *dest, const void *src, size_t len)
   __m512i_u* d = (__m512i_u*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm512_storeu_si512(d++, _mm512_loadu_si512(s++));
 
   return dest;
 }
@@ -865,7 +871,7 @@ void * memcpy_128bit_a(void *dest, const void *src, size_t len)
   __m128i* d = (__m128i*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm_store_si128(d++, _mm_load_si128(s++));
 
   return dest;
 }
@@ -967,7 +973,7 @@ void * memcpy_256bit_a(void *dest, const void *src, size_t len)
   __m256i* d = (__m256i*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm256_store_si256(d++, _mm256_load_si256(s++));
 
   return dest;
 }
@@ -1067,7 +1073,7 @@ void * memcpy_512bit_a(void *dest, const void *src, size_t len)
   __m512i* d = (__m512i*)dest;
 
   while (len--)
-    *d++ = *s++;
+    _mm512_store_si512(d++, _mm512_load_si512(s++));
 
   return dest;
 }

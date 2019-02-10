@@ -39,9 +39,17 @@ int memcmp_eq (const void *str1, const void *str2, size_t count)
 // The code below this comment is subject to the custom attribution license found
 // here: https://github.com/KNNSpeed/Simple-Kernel/blob/master/LICENSE_KERNEL
 //
-// AVX2 Memcmp V1.0
+// AVX2 Memcmp V1.1
 // Minimum requirement: x86_64 CPU with SSE4.2, but AVX2 or later is recommended
 //
+
+#ifdef __clang__
+#define __m128i_u __m128i
+#define __m256i_u __m256i
+#define __m512i_u __m512i
+#define _mm_cvtsi128_si64x _mm_cvtsi128_si64
+#define _mm_cvtsi64x_si128 _mm_cvtsi64_si128
+#endif
 
 #ifdef __AVX512F__
 #define BYTE_ALIGNMENT 0x3F // For 64-byte alignment

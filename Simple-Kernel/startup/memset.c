@@ -20,9 +20,15 @@ void * memset (void *dest, const uint8_t val, size_t len)
 // The code below this comment is subject to the custom attribution license found
 // here: https://github.com/KNNSpeed/Simple-Kernel/blob/master/LICENSE_KERNEL
 //
-// AVX Memset V1.0
+// AVX Memset V1.1
 // Minimum requirement: x86_64 CPU with SSE2, but AVX2 or later is recommended
 //
+
+#ifdef __clang__
+#define __m128i_u __m128i
+#define __m256i_u __m256i
+#define __m512i_u __m512i
+#endif
 
 #ifdef __AVX512F__
 #define BYTE_ALIGNMENT 0x3F // For 64-byte alignment
@@ -314,7 +320,7 @@ void * memset_128bit_u(void *dest, const __m128i_u val, size_t len)
 {
   __m128i_u *ptr = (__m128i_u*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm_storeu_si128(ptr++, val);
   return dest;
 }
 
@@ -331,7 +337,7 @@ void * memset_256bit_u(void *dest, const __m256i_u val, size_t len)
 {
   __m256i_u *ptr = (__m256i_u*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm256_storeu_si256(ptr++, val);
   return dest;
 }
 #endif
@@ -345,7 +351,7 @@ void * memset_512bit_u(void *dest, const __m512i_u val, size_t len)
 {
   __m512i_u *ptr = (__m512i_u*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm512_storeu_si512(ptr++, val);
   return dest;
 }
 #endif
@@ -361,7 +367,7 @@ void * memset_128bit_a(void *dest, const __m128i val, size_t len)
 {
   __m128i *ptr = (__m128i*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm_store_si128(ptr++, val);
   return dest;
 }
 
@@ -378,7 +384,7 @@ void * memset_256bit_a(void *dest, const __m256i val, size_t len)
 {
   __m256i *ptr = (__m256i*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm256_store_si256(ptr++, val);
   return dest;
 }
 #endif
@@ -392,7 +398,7 @@ void * memset_512bit_a(void *dest, const __m512i val, size_t len)
 {
   __m512i *ptr = (__m512i*)dest;
   while (len-- > 0)
-    *ptr++ = val;
+    _mm512_store_si512(ptr++, val);
   return dest;
 }
 #endif
