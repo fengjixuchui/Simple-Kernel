@@ -176,12 +176,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   } EFI_MEMORY_DESCRIPTOR;
   */
 
-  unsigned char swapped_image[sizeof(load_image2)]; // You never know what's lurking in memory that hasn't been cleaned up...
-  // In this case UEFI stuff. This program doesn't care about anything not passed into it explicitly, so as long as we don't
-  // accidentally overwrite things in the loader block, we'll be OK. Really should be consulting/checking against the memmap to be sure, though.
-  //... Would be much easier to print the whole memmap, once formatted string printing works.
-
-  //TODO: Check what this swapped_image buffer is running over. There's something under here. Requires working printf or equivalent (or, well, some kind of basic memory management)
+  unsigned char swapped_image[sizeof(load_image2)]; // Local arrays are undefined until set.
 
 //  bitmap_bitswap(load_image, 12, 27, swapped_image);
 //  char swapped_image2[sizeof(load_image)];
@@ -224,29 +219,57 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   {
     printf("Paging is enabled. (CR0.PG = 1)\r\n");
   }
+  if(cr0 & (1 << 1))
+  {
+    printf("SSE: CR0.MP = 1\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.MP = 0, need to enable\r\n");
+  }
+  if(cr0 & (1 << 2))
+  {
+    printf("SSE: CR0.EM = 1, need to disable\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.EM = 0\r\n");
+  }
+  if(cr0 & (1 << 3))
+  {
+    printf("SSE: CR0.TS = 1, need to disable\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.TS = 0\r\n");
+  }
   if(cr4 & (1 << 5))
   {
     printf("PAE is enabled. (CR4.PAE = 1)\r\n");
   }
   if(cr4 & (1 << 9))
   {
-    printf("CR4.OSFXSR = 1\r\n");
+    printf("SSE: CR4.OSFXSR = 1\r\n");
   }
   else
   {
-    printf("CR4.OSFXSR = 0\r\n");
+    printf("SSE: CR4.OSFXSR = 0\r\n");
   }
-  if(!(cr4 & (1 << 10)))
+  if(cr4 & (1 << 10))
   {
-    printf("CR4.OSXMMEXCPT = 0\r\n");
+    printf("SSE: CR4.OSXMMEXCPT = 1\r\n");
+  }
+  else
+  {
+    printf("SSE: CR4.OSXMMEXCPT = 0\r\n");
   }
   if(cr4 & (1 << 18))
   {
-    printf("CR4.OSXSAVE = 1\r\n");
+    printf("SSE/AVX: CR4.OSXSAVE = 1\r\n");
   }
   else
   {
-    printf("CR4.OSXSAVE = 0\r\n");
+    printf("SSE/AVX: CR4.OSXSAVE = 0\r\n");
   }
   // Verify we're in long mode (UEFI by default should have put us there)
   if((efer & 0x500) == 0x500)
@@ -261,6 +284,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   {
     printf("Interrupts are disabled. (IF = 0)\r\n");
   }
+
   uint16_t gdt_index = cs >> 3; // This index is how many GDT_ENTRY_STRUCTs above GDT BaseAddress the current code segment is
   // Check if 64-bit mode's all set to go.
   DT_STRUCT gdt = get_gdtr(); // GDT is up to 64k from base addr, but CS points to max index in x86_64
@@ -284,6 +308,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   else
   {
     printf("CPUID is supported.\r\n");
+    printf("\r\n");
     printf("\r\n");
     cpu_features(0, 0);
     printf("\r\n");
@@ -1179,6 +1204,7 @@ void bitmap_bitreverse(const unsigned char * bitmap, UINT32 height, UINT32 width
 
   for(uint32_t iter = 0; iter < height*row_iterator; iter++) // Invert one byte at a time
   {
+    output[iter] = 0;
     for(uint32_t bit = 0; bit < 8; bit++)
     {
       if( bitmap[iter] & (1 << (7 - bit)) )

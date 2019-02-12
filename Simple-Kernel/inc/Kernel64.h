@@ -374,12 +374,12 @@ typedef struct __attribute__ ((packed)) {
 
 // Intel Architecture Manual Vol. 3A, Fig. 3-8 (Segment Descriptor)
 typedef struct __attribute__ ((packed)) {
-  UINT16 SegmentLimit1;
-  UINT16 BaseAddress1;
-  UINT8  BaseAddress2;
+  UINT16 SegmentLimit1; // Low bits, SegmentLimit2andMisc has MSBs (it's a 20-bit value)
+  UINT16 BaseAddress1; // Low bits
+  UINT8  BaseAddress2; // Next bits
   UINT8  Misc1; // Bits 0-3: segment/gate Type, 4: S, 5-6: DPL, 7: P
   UINT8  SegmentLimit2andMisc; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
-  UINT8  BaseAddress3;
+  UINT8  BaseAddress3; // Most significant bits
 } GDT_ENTRY_STRUCT; // This whole thing can fit in a 64-bit int. Printf %lx on SegmentLimit1 gives the whole thing.
 
 // Initialization-related functions
