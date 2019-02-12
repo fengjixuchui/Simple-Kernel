@@ -29,9 +29,12 @@ In freestanding mode, the only available standard header files are: <float.h>,
 #include <float.h>
 #include <stdarg.h>
 
+#include <cpuid.h> // ...But we have this, too.
+
 #include "EfiBind.h"
 #include "EfiTypes.h"
 #include "EfiError.h"
+#include "avxmem.h"
 
 // GRAPHICS
 typedef struct {
@@ -351,18 +354,47 @@ typedef struct {
 	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;
 	UINT32                             height; // Character font height
 	UINT32                             width; // Character font width (in bits)
-	UINT32                             font_color;
-	UINT32                             highlight_color;
-  UINT32                             background_color;
-	UINT32                             x; // Top leftmost x-coord
-	UINT32                             y; // top leftmost y-coord
-	UINT32                             scale; // Output scale for font
-  UINT32                             index; // Global string index for printf, etc. to keep track of cursor's postion
+	UINT32                             font_color; // Default font color
+	UINT32                             highlight_color; // Default highlight color
+  UINT32                             background_color; // Default background color
+	UINT32                             x; // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
+	UINT32                             y; // Topmost y-coord
+	UINT32                             scale; // Output scale for systemfont used by printf
+  UINT32                             index; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
+  UINT32                             textscrollmode; // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
 } GLOBAL_PRINT_INFO_STRUCT;
 
 GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
-void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
 
+// Intel Architecture Manual Vol. 3A, Fig. 3-11 (Pseudo-Descriptor Formats)
+typedef struct __attribute__ ((packed)) {
+  UINT16 Limit; // Limit + 1 = size, since limit + base = the last valid address
+  UINT64 BaseAddress;
+} DT_STRUCT; // GDT, IDT, LDT all use this format
+
+// Intel Architecture Manual Vol. 3A, Fig. 3-8 (Segment Descriptor)
+typedef struct __attribute__ ((packed)) {
+  UINT16 SegmentLimit1;
+  UINT16 BaseAddress1;
+  UINT8  BaseAddress2;
+  UINT8  Misc1; // Bits 0-3: segment/gate Type, 4: S, 5-6: DPL, 7: P
+  UINT8  SegmentLimit2andMisc; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
+  UINT8  BaseAddress3;
+} GDT_ENTRY_STRUCT; // This whole thing can fit in a 64-bit int. Printf %lx on SegmentLimit1 gives the whole thing.
+
+// Initialization-related functions
+void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
+void cpu_features(uint64_t rax_value, uint64_t rcx_value);
+uint64_t get_tick(void);
+void enable_AVX(void);
+void enable_interrupts(void);
+uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
+uint64_t msr_rw(uint64_t msr, uint64_t data, int rw);
+uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw);
+uint64_t read_cs(void);
+DT_STRUCT get_gdtr(void);
+
+// Drawing-related functions
 void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
 void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color);
 
@@ -371,27 +403,32 @@ void Resetdefaultscreen(void);
 
 void single_pixel(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 x, UINT32 y, UINT32 color);
 
+void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
+
+void bitmap_bitswap(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output);
+void bitmap_bitreverse(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output);
+void bitmap_bytemirror(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output);
+
+// Text-related functions
 void single_char(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color);
 void single_char_anywhere(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y);
 void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
 
-void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
-void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, char * string, ...);
+void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
+void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, const char * string, ...);
 void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
 
-void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
-void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
-
-void bitmap_bitswap(char * bitmap, UINT32 height, UINT32 width, char * output);
-void bitmap_bitreverse(char * bitmap, UINT32 height, UINT32 width, char * output);
-void bitmap_bytemirror(char * bitmap, UINT32 height, UINT32 width, char * output);
-
-int kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_list ap);
+// Printf-related functions
 int snprintf(char *str, size_t size, const char *format, ...);
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
+int vsnrprintf(char *str, size_t size, int radix, const char *format, va_list ap);
 int sprintf(char *buf, const char *cfmt, ...);
 int vsprintf(char *buf, const char *cfmt, va_list ap);
+
 int printf(const char *fmt, ...);
+int vprintf(const char *fmt, va_list ap);
+int kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_list ap);
 
 // Don't remove this #endif
 #endif /* _Kernel64_H */

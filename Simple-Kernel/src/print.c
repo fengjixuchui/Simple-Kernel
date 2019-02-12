@@ -494,6 +494,22 @@ static void snprintf_func(int ch, void *arg)
 	}
 }
 
+/*
+ * Kernel version which takes radix argument vsnprintf(3).
+ */
+int vsnrprintf(char *str, size_t size, int radix, const char *format, va_list ap)
+{
+	struct snprintf_arg info;
+	int retval;
+
+	info.str = str;
+	info.remain = size;
+	retval = kvprintf(format, snprintf_func, &info, radix, ap);
+	if (info.remain >= 1)
+		*info.str++ = '\0';
+	return (retval);
+}
+
 // kvprintf requires a putchar function. No console layer here: this putchar draws directly to the screen.
 static void printf_putchar(int output_character, void *arglist) // Character is in int form; this putchar will only apply to printf because it modifies the global string index
 {
@@ -530,7 +546,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 		case '\033':
 			// Escape doesn't do anything currently.
 		case '\x7F':
-			//	DEL is supposed to get ignored. It doesn't always, but it will here.
+			// DEL is supposed to get ignored. It doesn't always, but it will here.
 			break;
 		case '\x85': // NEL, or CR+LF in one character
 			arg->index = 0;
@@ -542,7 +558,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 				// NOTE: I'm not implementing this. On a 4K screen this would be AWFUL -- a 31MB move. 8K would be 126MB.
 				// TODO: ...Do we have hardware scrolling?
 				//arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
-				//memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->PixelsPerScanLine - 1) * arg->defaultGPU.Info->VerticalResolution * 4);
+				// AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->PixelsPerScanLine - 1) * arg->defaultGPU.Info->VerticalResolution * 4);
 			}
 			break;
 		case '\014': // Form Feed, aka next page
@@ -628,6 +644,16 @@ int printf(const char *fmt, ...)
 	retval = kvprintf(fmt, printf_putchar, &Global_Print_Info, 10, ap); // The third argument is any arguments to be passed to putchar (e.g. &pca - putchar args)
 // retval = kvprintf(fmt, printf_putchar, NULL, 10, ap); // This could work, too (requires using similarly commented code in printf_putchar)
 	va_end(ap);
+
+	return (retval);
+}
+
+// This also seems useful.
+int vprintf(const char *fmt, va_list ap)
+{
+	int retval;
+
+	retval = kvprintf(fmt, printf_putchar, &Global_Print_Info, 10, ap);
 
 	return (retval);
 }

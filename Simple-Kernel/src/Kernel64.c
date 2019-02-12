@@ -50,7 +50,7 @@
 #define MINOR_VER 'y'
 
 // The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
-char load_image[48] = {
+const unsigned char load_image[48] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
     0x0C, 0x00, 0x06, 0x00, // ....@@.. ........ .....@@. ........
@@ -66,7 +66,7 @@ char load_image[48] = {
 }; // Width = 27 bits, height = 12 bytes
 
 // load_image2 is what actually looks like load_image's ascii art when rendered
-char load_image2[96] = {
+const unsigned char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
@@ -93,7 +93,7 @@ char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00  // ........ ..@@@@@@ @....... ........
 }; // Width = 27 bits, height = 24 bytes
 
-char load_image3[144] = {
+const unsigned char load_image3[144] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
@@ -140,10 +140,10 @@ char load_image3[144] = {
 //void kernel_main(EFI_MEMORY_DESCRIPTOR * Memory_Map, EFI_RUNTIME_SERVICES * RTServices, EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE * GPU_Mode, EFI_FILE_INFO * FileMeta, void * RSDP)
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
-
   // This function call is required to initialize printf. Set default GPU as GPU 0.
-  Initialize_Global_Printf_Defaults(LP->GPU_Configs->GPUArray[0]);
   // This function can be used to reset all global printf values and reassign a new default GPU at any time.
+  Initialize_Global_Printf_Defaults(LP->GPU_Configs->GPUArray[0]);
+  // Technically, printf is immediately usable now. I'd recommend waitng for AVX/SSE init just in case the compiler uses them when optimizing printf.
   //
 
   /*
@@ -176,7 +176,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   } EFI_MEMORY_DESCRIPTOR;
   */
 
-  char swapped_image[sizeof(load_image2)]; // You never know what's lurking in memory that hasn't been cleaned up...
+  unsigned char swapped_image[sizeof(load_image2)]; // You never know what's lurking in memory that hasn't been cleaned up...
   // In this case UEFI stuff. This program doesn't care about anything not passed into it explicitly, so as long as we don't
   // accidentally overwrite things in the loader block, we'll be OK. Really should be consulting/checking against the memmap to be sure, though.
   //... Would be much easier to print the whole memmap, once formatted string printing works.
@@ -192,12 +192,176 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
     bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
   }
 
+  uint64_t cr0 = control_register_rw(0, 0, 0);
+  printf("CR0: %#qx\r\n", cr0);
+//  printf("CR1: %#qx\r\n", control_register_rw(1, 0, 0));
+  uint64_t cr2 = control_register_rw(2, 0, 0);
+  printf("CR2: %#qx\r\n", cr2);
+  uint64_t cr3 = control_register_rw(3, 0, 0);
+  printf("CR3: %#qx\r\n", cr3);
+  uint64_t cr4 = control_register_rw(4, 0, 0);
+  printf("CR4: %#qx\r\n", cr4);
+  uint64_t cr8 = control_register_rw(8, 0, 0);
+  printf("CR8: %#qx\r\n", cr8);
+  uint64_t efer = msr_rw(0xC0000080, 0, 0);
+  printf("IA32_EFER: %#qx\r\n", efer);
+  uint64_t rflags = control_register_rw('f', 0, 0);
+  printf("RFLAGS: %#qx\r\n", rflags);
+  // Checking CPUID means determining if bit 21 of FLAGS can be toggled
+  uint64_t rflags2 = rflags ^ (1 << 21);
+  control_register_rw('f', rflags2, 1);
+  rflags2 = control_register_rw('f', 0, 0);
+  uint64_t cs = read_cs();
+  printf("CS: %#qx\r\n", cs);
+
+  // Decode some of the results from the above hex
+  printf("\r\n");
+  if(cr0 & 0x01)
+  {
+    printf("Protected mode is enabled. (CR0.PE = 1)\r\n");
+  }
+  if(cr0 & (1 << 31))
+  {
+    printf("Paging is enabled. (CR0.PG = 1)\r\n");
+  }
+  if(cr4 & (1 << 5))
+  {
+    printf("PAE is enabled. (CR4.PAE = 1)\r\n");
+  }
+  if(cr4 & (1 << 9))
+  {
+    printf("CR4.OSFXSR = 1\r\n");
+  }
+  else
+  {
+    printf("CR4.OSFXSR = 0\r\n");
+  }
+  if(!(cr4 & (1 << 10)))
+  {
+    printf("CR4.OSXMMEXCPT = 0\r\n");
+  }
+  if(cr4 & (1 << 18))
+  {
+    printf("CR4.OSXSAVE = 1\r\n");
+  }
+  else
+  {
+    printf("CR4.OSXSAVE = 0\r\n");
+  }
+  // Verify we're in long mode (UEFI by default should have put us there)
+  if((efer & 0x500) == 0x500)
+  {
+    printf("Long mode is enabled and active. (IA32e.LME = 1 & IA32e.LMA = 1)\r\n");
+  }
+  if(rflags & (1 << 9))
+  {
+    printf("Interrupts are enabled. (IF = 1)\r\n");
+  }
+  else
+  {
+    printf("Interrupts are disabled. (IF = 0)\r\n");
+  }
+  uint16_t gdt_index = cs >> 3; // This index is how many GDT_ENTRY_STRUCTs above GDT BaseAddress the current code segment is
+  // Check if 64-bit mode's all set to go.
+  DT_STRUCT gdt = get_gdtr(); // GDT is up to 64k from base addr, but CS points to max index in x86_64
+  printf("GDTR addr: %#qx, limit: %#hx\r\n", gdt.BaseAddress, gdt.Limit);
+
+  printf("CS GDT Entry: %#qx\r\n", ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index]);
+//  printf("CS GDT Entry: %#qx\r\n", *((GDT_ENTRY_STRUCT *)(gdt.BaseAddress + 8*gdt_index)) ); // Same thing
+
+  if( (((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 6)) == 0 ) // CS.D = 0 means "not in 32-bit mode" (either 16- or 64-bit mode)
+  {
+    if( ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 5) ) // CS.L = 1 means 64-bit mode if CS.D = 0.
+    {
+      printf("All good: 64-bit mode enabled. (CS.D = 0, CS.L = 1)\r\n");
+    }
+  }
+
+  if(rflags2 == rflags)
+  {
+    printf("CPUID is not supported.\r\n");
+  }
+  else
+  {
+    printf("CPUID is supported.\r\n");
+    printf("\r\n");
+    cpu_features(0, 0);
+    printf("\r\n");
+    cpu_features(1, 0);
+    printf("\r\n");
+    cpu_features(7, 0);
+    printf("\r\n");
+    cpu_features(0x80000000, 0);
+    printf("\r\n");
+    cpu_features(0x0D, 0);
+    printf("\r\n");
+    cpu_features(0x0D, 1);
+    printf("\r\n");
+    cpu_features(0x80000001, 0);
+    printf("\r\n");
+    cpu_features(0x80000006, 0);
+    printf("\r\n");
+    cpu_features(0x80000008, 0);
+    printf("\r\n");
+  }
+
+
   // ASM so that GCC doesn't mess with this loop. This is about as optimized this can get.
   asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
                 "Loop0:\n\t"
                 "addl $1, %%eax\n\t"
                 "testl %%eax, %%eax\n\t"
                 "jne Loop0\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
+                : // no outputs
+                : // no inputs
+                : // no clobbers
+              );
+
+  asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
+                "Loop7:\n\t"
+                "addl $1, %%eax\n\t"
+                "testl %%eax, %%eax\n\t"
+                "jne Loop7\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
+                : // no outputs
+                : // no inputs
+                : // no clobbers
+              );
+
+  asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
+                "Loop8:\n\t"
+                "addl $1, %%eax\n\t"
+                "testl %%eax, %%eax\n\t"
+                "jne Loop8\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
+                : // no outputs
+                : // no inputs
+                : // no clobbers
+              );
+
+  asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
+                "Loop9:\n\t"
+                "addl $1, %%eax\n\t"
+                "testl %%eax, %%eax\n\t"
+                "jne Loop9\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
+                : // no outputs
+                : // no inputs
+                : // no clobbers
+              );
+
+  asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
+                "Loop10:\n\t"
+                "addl $1, %%eax\n\t"
+                "testl %%eax, %%eax\n\t"
+                "jne Loop10\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
+                : // no outputs
+                : // no inputs
+                : // no clobbers
+              );
+
+  asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
+                "Loop11:\n\t"
+                "addl $1, %%eax\n\t"
+                "testl %%eax, %%eax\n\t"
+                "jne Loop11\n\t" // Count to 2^32, which is about 1 second at 4 GHz. 2^64 is... still insanely long.
                 : // no outputs
                 : // no inputs
                 : // no clobbers
@@ -237,12 +401,30 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
               );
 
   Colorscreen(LP->GPU_Configs->GPUArray[0], 0x00FF0000); // Red in BGRX (X = reserved, technically an "empty alpha channel" for 32-bit memory alignment)
-  printf("PRINTF!! 0x%x", 27);
+  printf("PRINTF!! 0x%qx", LP->GPU_Configs->GPUArray[0].FrameBufferBase);
   printf("Whup %s\r\nOh.\r\n", "Yo%%nk");
+  Global_Print_Info.scale = 4; // Output scale for systemfont used by printf
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/2, 2, "FORMATTED STRING!! %#x", Global_Print_Info.index);
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/4, 2, "FORMATTED %s STRING!! %s", "Heyo!", "Heyz!");
+  printf("This printf shouldn't move due to formatted string invocation.");
   single_char(LP->GPU_Configs->GPUArray[0], '2', 8, 8, 0x00FFFFFF, 0xFF000000);
+
+  // TODO: test this
+//			EFI_PHYSICAL_ADDRESS * base = (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase);
+//				EFI_PHYSICAL_ADDRESS * source = (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4);
+//				EFI_PHYSICAL_ADDRESS * source = (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + 4000);
+
+  //size_t copysize = (arg->defaultGPU.Info->PixelsPerScanLine - 1) * arg->defaultGPU.Info->VerticalResolution * 4;
+//  EFI_PHYSICAL_ADDRESS source = LP->GPU_Configs->GPUArray[0].FrameBufferBase + 1024;
+//  size_t copysize = 3; // memmove: crash on 32+, AVX_memmove: crash on 4+
+//  AVX_memmove((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, (UINT32*)(LP->GPU_Configs->GPUArray[0].FrameBufferBase + 1024*4*763), copysize);
+  //
+  //memset_256bit_u((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, _mm256_set1_epi32(0x00FFFFFF), 1024*767*4 >> 5);
+  // This works:
+//   memset_32bit((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, 0x00FFFFFF, 1024*767); // The framebuffer will crash if it's not written to with 32-bit uints.
+  // memset_32bit((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, 0x00FFFFFF, 1024*767*4 >> 2);
+  // Writing to the reserved bits causes a crash.
 
   // ASM so that GCC doesn't mess with this loop. This is about as optimized this can get.
   asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
@@ -296,6 +478,356 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
 }
 
+void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
+{
+  // x86 does not memory-map control registers, unlike, for example, STM32 chips
+  // System control registers like CR0, CR1, CR2, CR3, CR4, CR8, and EFLAGS
+  // are accessed via special asm instructions.
+  uint64_t rax, rbx, rcx, rdx = 0;
+  printf("CPUID input rax: %#qx, rcx: %#qx\r\n\n", rax_value, rcx_value);
+
+  if(rax_value == 0)
+  {
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+               );
+
+    printf("rax: %#qx\r\n%c%c%c%c%c%c%c%c%c%c%c%c\r\n", rax,
+    ((char *)&rbx)[0], ((char *)&rbx)[1], ((char *)&rbx)[2], ((char *)&rbx)[3],
+    ((char *)&rdx)[0], ((char *)&rdx)[1], ((char *)&rdx)[2], ((char *)&rdx)[3],
+    ((char *)&rcx)[0], ((char *)&rcx)[1], ((char *)&rcx)[2], ((char *)&rcx)[3]);
+    // GenuineIntel
+    // AuthenticAMD
+  }
+  else if(rax_value == 1)
+  {
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+               );
+
+    printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
+    if(rcx >> 31) // 1 means hypervisor (i.e. in a VM), 0 means no hypervisor
+    {
+      printf("You're in a hypervisor!\r\n");
+    }
+  }
+  else if(rax_value == 7 && rcx_value == 0)
+  {
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value), "c" (rcx_value) // The values to put into %rax and %rcx
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+              );
+
+    printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
+  }
+  else if(rax_value == 0x80000000)
+  {
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+              );
+    if(rax >= 0x80000004)
+    {
+      uint32_t brandstring[12];
+
+      rax_value = 0x80000002;
+      asm volatile("cpuid"
+                   : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                   : "a" (rax_value) // The value to put into %rax
+                   : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+                );
+
+      brandstring[0] = ((uint32_t *)&rax)[0];
+      brandstring[1] = ((uint32_t *)&rbx)[0];
+      brandstring[2] = ((uint32_t *)&rcx)[0];
+      brandstring[3] = ((uint32_t *)&rdx)[0];
+
+      rax_value = 0x80000003;
+      asm volatile("cpuid"
+                   : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                   : "a" (rax_value) // The value to put into %rax
+                   : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+                );
+
+      brandstring[4] = ((uint32_t *)&rax)[0];
+      brandstring[5] = ((uint32_t *)&rbx)[0];
+      brandstring[6] = ((uint32_t *)&rcx)[0];
+      brandstring[7] = ((uint32_t *)&rdx)[0];
+
+      rax_value = 0x80000004;
+      asm volatile("cpuid"
+                   : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                   : "a" (rax_value) // The value to put into %rax
+                   : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+                );
+
+      brandstring[8] = ((uint32_t *)&rax)[0];
+      brandstring[9] = ((uint32_t *)&rbx)[0];
+      brandstring[10] = ((uint32_t *)&rcx)[0];
+      brandstring[11] = ((uint32_t *)&rdx)[0];
+
+      printf("Brand String: %.48s\r\n", (char *)brandstring);
+    }
+    else
+    {
+      printf("Brand string not supported\r\n");
+    }
+  }
+  else
+  {
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+               );
+
+    printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
+  }
+  // Check for AVX2 or AVX support for AVX memmoves.
+}
+
+uint64_t read_cs(void)
+{
+  uint64_t output = 0;
+  asm volatile("mov %%cs, %[dest]"
+                : [dest] "=r" (output)
+                : // no inputs
+                : // no clobbers
+                );
+  return output;
+}
+
+uint64_t get_tick(void) // Finally a way to tell time! Ticks since last CPU reset.
+{
+    uint32_t high, low = 0;
+    asm volatile("rdtscp"
+                  : "=a" (low), "=d" (high)
+                  : // no inputs
+                  : "%rcx"// clobbers
+                  );
+    return ((uint64_t)high << 32 | low);
+}
+
+void enable_AVX(void)
+{
+  // AVX needs to be enabled before use.
+  // if XSAVE, check OSXSAVE & check AVX/AVX2 support (they're in different regs)
+  // if AVX supported and OSXSAVE is 0, use XSETBV 7 to enable AVX(2)
+  // Then confirm by checking OSXSAVE again
+
+  // If OSXSAVE allows, do this:
+#ifdef __AVX512__
+  xcr_rw(0, 0xE7, 1);
+#elif __AVX__
+  xcr_rw(0, 7, 1);
+#endif
+}
+
+void enable_interrupts(void)
+{
+  // Check if disabled, if disabled then enable them
+  // pushfq gives rflags
+  // These might already be enabled, but there's no interrupt table?
+}
+
+uint64_t control_register_rw(int crX, uint64_t in_out, int rw) // Read from or write to a control register
+{
+  // in_out: writes this value if rw = 1
+  // rw: 0 = read, 1 = write
+  if(rw == 1) // Write
+  {
+    switch(crX)
+    {
+      case(0):
+        asm volatile("mov %[dest], %%cr0"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case(1):
+        asm volatile("mov %[dest], %%cr1"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case(2):
+        asm volatile("mov %[dest], %%cr2"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case(3):
+        asm volatile("mov %[dest], %%cr3"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case(4):
+        asm volatile("mov %[dest], %%cr4"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case(8):
+        asm volatile("mov %[dest], %%cr8"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : // No clobbers
+                   );
+        break;
+      case('f'):
+        asm volatile("pushq %[dest]\n\t"
+                     "popfq"
+                     : // No outputs
+                     : [dest] "r" (in_out) // Inputs
+                     : "cc" // Control codes get clobbered
+                   );
+        break;
+      default:
+        // Nothing
+        break;
+    }
+  }
+  else // Read
+  {
+    switch(crX)
+    {
+      case(0):
+        asm volatile("mov %%cr0, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case(1):
+        asm volatile("mov %%cr1, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case(2):
+        asm volatile("mov %%cr2, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case(3):
+        asm volatile("mov %%cr3, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case(4):
+        asm volatile("mov %%cr4, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case(8):
+        asm volatile("mov %%cr8, %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      case('f'):
+        asm volatile("pushfq\n\t"
+                     "pop %[dest]"
+                     : [dest] "=r" (in_out) // Outputs
+                     : // No inputs
+                     : // No clobbers
+                   );
+        break;
+      default:
+        // Nothing
+        break;
+    }
+  }
+
+  return in_out;
+}
+
+uint64_t msr_rw(uint64_t msr, uint64_t data, int rw)
+{
+  // rw: 0 = read, 1 = write
+  // data is ignored for reads
+  uint32_t high, low = 0;
+
+  if(rw == 1) // Write
+  {
+    low = ((uint32_t *)&data)[0];
+    high = ((uint32_t *)&data)[1];
+    asm volatile("wrmsr"
+             : // No outputs
+             : "a" ((uint64_t)low), "c" (msr), "d" ((uint64_t)high) // Input MSR into %rcx, and high (%rdx) & low (%rax) to write
+             : // No clobbers
+           );
+  }
+  else // Read
+  {
+    asm volatile("rdmsr"
+             : "=a" (low), "=d" (high) // Outputs
+             : "c" (msr) // Input MSR into %rcx
+             : // No clobbers
+           );
+  }
+  return ((uint64_t)high << 32 | low); // For write, this will be data. Reads will be the msr's value.
+}
+
+uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw)
+{
+  // rw: 0 = read, 1 = write
+  // data is ignored for reads
+  uint32_t high, low = 0;
+
+  if(rw == 1) // Write
+  {
+    low = ((uint32_t *)&data)[0];
+    high = ((uint32_t *)&data)[1];
+    asm volatile("xsetbv"
+             : // No outputs
+             : "a" ((uint64_t)low), "c" (xcr), "d" ((uint64_t)high) // Input XCR# into %rcx, and high (%rdx) & low (%rax) to write
+             : // No clobbers
+           );
+  }
+  else // Read
+  {
+    asm volatile("xgetbv"
+             : "=a" (low), "=d" (high) // Outputs
+             : "c" (xcr) // Input XCR# into %rcx
+             : // No clobbers
+           );
+  }
+  return ((uint64_t)high << 32 | low); // For write, this will be data. Reads will be the msr's value.
+}
+
+DT_STRUCT get_gdtr(void)
+{
+  DT_STRUCT gdtr_data;
+  asm volatile("sgdt %[dest]"
+           : [dest] "=m" (gdtr_data) // Outputs
+           : // No inputs
+           : // No clobbers
+         );
+
+  return gdtr_data;
+}
+
 void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
 {
   // Set global default print information--needed for printf
@@ -309,6 +841,7 @@ void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
   Global_Print_Info.y = 0; // Topmost y-coord
   Global_Print_Info.scale = 1; // Output scale for systemfont used by printf
   Global_Print_Info.index = 0; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
+  Global_Print_Info.textscrollmode = 1; // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
   Colorscreen(GPU, Global_Print_Info.background_color);
 }
 
@@ -343,10 +876,12 @@ void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color)
       *(UINT32*)(GPU.FrameBufferBase + 4 * (GPU.Info->PixelsPerScanLine * row + col)) = color; // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
     }
   }
+// Leaving this here for posterity. The framebuffer size might be a fair bit larger than the visible area (possibly for scrolling support? Regardless, some are just the size of the native resolution).
 /*  for(UINTN i = 0; i < GPU.FrameBufferSize; i+=4) //32 bpp == 4 Bpp
   {
-    *(UINT32*)(GPU.FrameBufferBase + i) = color; // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
-  }*/
+    *(UINT32*)(GPU.FrameBufferBase + i) = color; // FrameBufferBase is a 64-bit address that points to UINT32s.
+  }
+*/
 }
 
 // Screen turns red if a pixel is put outside the visible area.
@@ -393,8 +928,8 @@ void single_char_anywhere(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, 
 
   Output_render_text(GPU, character, height, width, font_color, highlight_color, x, y, 1, 0);
 }
-// You know, this could probably do images. just pass in an appropriately-formatted array of bytes as the 'character' pointer. Arbitrarily-sized fonts should work, too.
-// This is probably the slowest possible way of doing what this function does, though, since it's all based on absolute addressing.
+
+// Arbitrarily-sized fonts should work, too.
 void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
 {
   // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
@@ -417,8 +952,8 @@ void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int char
   Output_render_text(GPU, character, height, width, font_color, highlight_color, x, y, scale, 0);
 }
 
-// Version for images.
-void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
+// Version for images. Just pass in an appropriately-formatted array of bytes as the 'character' pointer.
+void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
 {
   // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
   // x and y are top leftmost coordinates
@@ -442,7 +977,7 @@ void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap
 
 // literal strings in C are automatically null-terminated. i.e. "hi" is actually 3 characters long.
 // This function allows direct output of a pre-made string, either a hardcoded one or one made via sprintf.
-void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
+void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
 {
   // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
   // x and y are top leftmost coordinates
@@ -478,7 +1013,7 @@ void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * string
 } // end function
 
 // A massively customizable printf-like function. Supports everything printf supports.
-void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, char * string, ...)
+void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, const char * string, ...)
 {
   // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
   // x and y are top leftmost coordinates
@@ -535,10 +1070,7 @@ void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UI
         {
           for(uint32_t a = 0; a < scale; a++)
           {
-            if(*(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) != font_color) // No need to write if it's already there
-            {
-              *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
-            }
+            *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
           }
         } //end scale here
       } //end if
@@ -549,11 +1081,10 @@ void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UI
         {
           for(uint32_t a = 0; a < scale; a++)
           {
-            if((highlight_color != 0xFF000000) && (*(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) != highlight_color))
+            if(highlight_color != 0xFF000000) // Transparency "color"
             {
               *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = highlight_color;
             }
-            // do nothing if color's already there for speed
           }
         } //end scale here
       } // end else
@@ -561,7 +1092,7 @@ void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UI
   } // end byte in row
 }
 
-void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index)
+void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index)
 {
   // Compact ceiling function, so that size doesn't need to be passed in
   // This should be faster than a divide followed by a mod
@@ -590,10 +1121,7 @@ void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, 
         {
           for(uint32_t a = 0; a < scale; a++)
           {
-            if(*(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) != font_color) // No need to write if it's already there
-            {
-              *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
-            }
+            *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
           }
         } //end scale here
       } //end if
@@ -604,11 +1132,10 @@ void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, char * bitmap, 
         {
           for(uint32_t a = 0; a < scale; a++)
           {
-            if((highlight_color != 0xFF000000) && (*(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) != highlight_color))
+            if(highlight_color != 0xFF000000) // Transparency "color"
             {
               *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = highlight_color;
             }
-            // do nothing if color's already there for speed
           }
         } //end scale here
       } // end else
@@ -627,7 +1154,7 @@ void Output_render_vector(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 x_init, 
 */
 
 // Swaps the high 4 bits with the low 4 bits in each byte of an array
-void bitmap_bitswap(char * bitmap, UINT32 height, UINT32 width, char * output)
+void bitmap_bitswap(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output)
 {
   uint32_t row_iterator = width >> 3;
   if((width & 0x7) != 0)
@@ -642,7 +1169,7 @@ void bitmap_bitswap(char * bitmap, UINT32 height, UINT32 width, char * output)
 }
 
 // Will invert each individual byte in an array: 12345678 --> 87654321
-void bitmap_bitreverse(char * bitmap, UINT32 height, UINT32 width, char * output)
+void bitmap_bitreverse(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output)
 {
   uint32_t row_iterator = width >> 3;
   if((width & 0x7) != 0)
@@ -663,7 +1190,7 @@ void bitmap_bitreverse(char * bitmap, UINT32 height, UINT32 width, char * output
 }
 
 // Requires rectangular arrays, and will create a horizontal reflection of entire array (like looking in a mirror)
-void bitmap_bytemirror(char * bitmap, UINT32 height, UINT32 width, char * output) // Width in bits, height in bytes
+void bitmap_bytemirror(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output) // Width in bits, height in bytes
 {
   uint32_t row_iterator = width >> 3;
   if((width & 0x7) != 0)
@@ -721,8 +1248,8 @@ VOID
 ResetSystem (IN EFI_RESET_TYPE ResetType, IN EFI_STATUS ResetStatus, IN UINTN DataSize, IN VOID *ResetData OPTIONAL);
 
 RT->ResetSystem (EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
-RT->ResetSystem (EfiResetCold, EFI_SUCCESS, 0, NULL); // Hard reboot the system
-RT->ResetSystem (EfiResetWarm, EFI_SUCCESS, 0, NULL); // Soft reboot the system
+RT->ResetSystem (EfiResetCold, EFI_SUCCESS, 0, NULL); // Hard reboot the system - the familiar restart
+RT->ResetSystem (EfiResetWarm, EFI_SUCCESS, 0, NULL); // Soft reboot the system -
 
 There is also EfiResetPlatformSpecific, but that's not really important. (Takes a standard 128-bit EFI_GUID as ResetData for a custom reset type)
 */
