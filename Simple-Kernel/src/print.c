@@ -550,15 +550,22 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 			break;
 		case '\x85': // NEL, or CR+LF in one character
 			arg->index = 0;
-			arg->y += arg->height * arg->scale;
-			if(arg->y > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
+			if((arg->y + arg->height * arg->scale) > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
 			{
-				arg->y = 0;
-				// Scroll up one
-				// NOTE: I'm not implementing this. On a 4K screen this would be AWFUL -- a 31MB move. 8K would be 126MB.
-				// TODO: ...Do we have hardware scrolling?
-				//arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
-				// AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->PixelsPerScanLine - 1) * arg->defaultGPU.Info->VerticalResolution * 4);
+				if(arg->textscrollmode)
+				{
+					arg->y = 0; // Wrap
+				}
+				else // Scroll
+				{ // Qualitative test results are in: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D
+					memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
+					if(arg->background_color != 0xFF000000)
+						memset_32bit((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+				}
+			}
+			else
+			{
+				arg->y += arg->height * arg->scale;
 			}
 			break;
 		case '\014': // Form Feed, aka next page
@@ -580,18 +587,42 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 		// NOTE: This implementation does NOT make a vertical line of highlight_color.
 			for(int tabspaces = 0; tabspaces < 6; tabspaces++)
 			{
-				arg->y += arg->height * arg->scale;
-				if(arg->y > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
+				if((arg->y + arg->height * arg->scale) > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
 				{
-					arg->y = 0;
+					if(arg->textscrollmode)
+					{
+						arg->y = 0; // Wrap
+					}
+					else // Scroll
+					{
+						memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
+						if(arg->background_color != 0xFF000000)
+							memset_32bit((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
+				}
+				else
+				{
+					arg->y += arg->height * arg->scale;
 				}
 			}
 			break;
 		case '\n':
-			arg->y += arg->height * arg->scale;
-			if(arg->y > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
+			if((arg->y + arg->height * arg->scale) > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound
 			{
-				arg->y = 0;
+				if(arg->textscrollmode)
+				{
+					arg->y = 0; // Wrap
+				}
+				else // Scroll
+				{
+					memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
+					if(arg->background_color != 0xFF000000)
+						memset_32bit((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+				}
+			}
+			else
+			{
+				arg->y += arg->height * arg->scale;
 			}
 			break;
 		case '\t': // Tab
@@ -606,10 +637,22 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 				if(arg->index * arg->width * arg->scale > (arg->defaultGPU.Info->HorizontalResolution - arg->width * arg->scale)) // Check if text is running off screen
 				{
 					arg->index = 0; // Horizontal wraparound
-					arg->y += arg->height * arg->scale; // Horizontal wrap means vertical goes down one line -- NOTE: The output render already accounts for PixelsPerScanLine offsets.
-					if(arg->y > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound if hit the bottom of the screen
+					if((arg->y + arg->height * arg->scale) > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound if hit the bottom of the screen
 					{
-						arg->y = 0;
+						if(arg->textscrollmode)
+						{
+							arg->y = 0; // Wrap
+						}
+						else // Scroll
+						{
+							memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
+							if(arg->background_color != 0xFF000000)
+								memset_32bit((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+						}
+					}
+					else
+					{
+						arg->y += arg->height * arg->scale; // Horizontal wrap means vertical goes down one line -- NOTE: The output render already accounts for PixelsPerScanLine offsets.
 					}
 				}
 			}
@@ -624,10 +667,23 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 			if(arg->index * arg->width * arg->scale > (arg->defaultGPU.Info->HorizontalResolution - arg->width * arg->scale)) // Check if text is running off screen
 			{
 				arg->index = 0; // Horizontal wraparound
-				arg->y += arg->height * arg->scale; // Horizontal wrap means vertical goes down one line -- NOTE: The output render already accounts for PixelsPerScanLine offsets.
-				if(arg->y > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound if hit the bottom of the screen
+				if((arg->y + arg->height * arg->scale) > (arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale)) // Vertical wraparound if hit the bottom of the screen
 				{
-					arg->y = 0;
+					if(arg->textscrollmode)
+					{
+						arg->y = 0; // Wrap
+					}
+					else // Scroll
+					{
+						// TODO: AVX_memmove is behaving weirdly...
+						memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
+						if(arg->background_color != 0xFF000000)
+							memset_32bit((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
+				}
+				else
+				{
+					arg->y += arg->height * arg->scale; // Horizontal wrap means vertical goes down one line -- NOTE: The output render already accounts for PixelsPerScanLine offsets.
 				}
 			}
 			break;
