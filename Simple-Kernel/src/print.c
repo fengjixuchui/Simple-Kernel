@@ -618,11 +618,11 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 					// Qualitative test results are in: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 
 					// Quick scroll
-					//AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), (arg->y * arg->defaultGPU.Info->PixelsPerScanLine) * 4);
-					//if(arg->background_color != 0xFF000000)
-					//	AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color | 0x0000FF00, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
+					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), (arg->y * arg->defaultGPU.Info->PixelsPerScanLine) * 4);
+					if(arg->background_color != 0xFF000000)
+						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color | 0x0000FF00, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 
-					// Smooth scroll
+				/*	// Smooth scroll
 					uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 					arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 					for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
@@ -632,7 +632,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 						{
 							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color | 0x0000FF00, arg->defaultGPU.Info->PixelsPerScanLine);
 						}
-					}
+					}*/
 				}
 			}
 			else
