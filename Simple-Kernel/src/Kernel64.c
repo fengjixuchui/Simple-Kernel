@@ -608,8 +608,12 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   Colorscreen(LP->GPU_Configs->GPUArray[0], 0x00FF0000); // Red in BGRX (X = reserved, technically an "empty alpha channel" for 32-bit memory alignment)
   printf("PRINTF!! 0x%qx", LP->GPU_Configs->GPUArray[0].FrameBufferBase);
   printf("Whup %s\r\nOh.\r\n", "Yo%%nk");
-  Global_Print_Info.scale = 5; // Output scale for systemfont used by printf
-  Global_Print_Info.textscrollmode = 0; // Enable scrolling
+  Global_Print_Info.scale = 4; // Output scale for systemfont used by printf
+  Global_Print_Info.y = 0; // reset print to top left
+  Global_Print_Info.textscrollmode = 1; // Enable quick scrolling
+  printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
+  printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
+  printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/2, 2, "FORMATTED STRING!! %#x", Global_Print_Info.index);
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/4, 2, "FORMATTED %s STRING!! %s", "Heyo!", "Heyz!");
@@ -1441,9 +1445,13 @@ void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
   Global_Print_Info.background_color = 0x00000000; // Default background color
   Global_Print_Info.x = 0; // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
   Global_Print_Info.y = 0; // Topmost y-coord
-  Global_Print_Info.scale = 1; // Output scale for systemfont used by printf
+  Global_Print_Info.scale = 1; // Output scale for systemfont used by printf (positive integer scaling only, default 1 = no scaling)
   Global_Print_Info.index = 0; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
-  Global_Print_Info.textscrollmode = 1; // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
+  Global_Print_Info.textscrollmode = 0; // What to do when a newline goes off the bottom of the screen. See next comment for values.
+  // textscrollmode:
+  //  0 = wrap around to the top
+  //  1 = scroll entire screen by one line of text
+  //  2 = smooth scroll (WARNING: the higher the screen resolution and the larger the font size + scaling combination, the slower this is.)
   Colorscreen(GPU, Global_Print_Info.background_color);
 }
 
