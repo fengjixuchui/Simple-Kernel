@@ -608,7 +608,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   Colorscreen(LP->GPU_Configs->GPUArray[0], 0x00FF0000); // Red in BGRX (X = reserved, technically an "empty alpha channel" for 32-bit memory alignment)
   printf("PRINTF!! 0x%qx", LP->GPU_Configs->GPUArray[0].FrameBufferBase);
   printf("Whup %s\r\nOh.\r\n", "Yo%%nk");
-  Global_Print_Info.scale = 4; // Output scale for systemfont used by printf
+  Global_Print_Info.scale = 5; // Output scale for systemfont used by printf
   Global_Print_Info.textscrollmode = 0; // Enable scrolling
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/2, 2, "FORMATTED STRING!! %#x", Global_Print_Info.index);

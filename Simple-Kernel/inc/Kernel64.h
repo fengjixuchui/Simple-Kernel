@@ -29,7 +29,7 @@ In freestanding mode, the only available standard header files are: <float.h>,
 #include <float.h>
 #include <stdarg.h>
 
-#include <cpuid.h> // ...But we have this, too.
+//#include <cpuid.h> // ...But we have this, too. Don't need it, though.
 
 #include "EfiBind.h"
 #include "EfiTypes.h"
@@ -386,10 +386,12 @@ typedef struct __attribute__ ((packed)) {
 void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 uint64_t get_tick(void);
-void enable_AVX(void);
 void enable_interrupts(void);
 uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
+uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
 uint64_t msr_rw(uint64_t msr, uint64_t data, int rw);
+uint32_t mxcsr_rw(uint32_t data, int rw);
+uint32_t vmxcsr_rw(uint32_t data, int rw);
 uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw);
 uint64_t read_cs(void);
 DT_STRUCT get_gdtr(void);
