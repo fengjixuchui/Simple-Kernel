@@ -40,7 +40,7 @@ void * memmove (void *dest, const void *src, size_t len)
 //  AVX Memory Functions: AVX Memmove
 //==============================================================================
 //
-// Version 1.2
+// Version 1.3
 //
 // Author:
 //  KNNSpeed
@@ -1872,6 +1872,8 @@ void * memmove_128bit_as(void *dest, const void *src, size_t len)
       _mm_stream_si128(--nextd, _mm_stream_load_si128(--nexts));
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -1900,6 +1902,8 @@ void * memmove_128bit_32B_as(void *dest, const void *src, size_t len)
       _mm_stream_si128(--nextd, _mm_stream_load_si128(--nexts)); // 2
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -1932,6 +1936,8 @@ void * memmove_128bit_64B_as(void *dest, const void *src, size_t len)
       _mm_stream_si128(--nextd, _mm_stream_load_si128(--nexts)); // 4
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -1972,6 +1978,8 @@ void * memmove_128bit_128B_as(void *dest, const void *src, size_t len)
       _mm_stream_si128(--nextd, _mm_stream_load_si128(--nexts)); // 8
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2029,6 +2037,8 @@ void * memmove_128bit_256B_as(void *dest, const void *src, size_t len)
       _mm_stream_si128(--nextd, _mm_stream_load_si128(--nexts)); // 16
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2063,6 +2073,8 @@ void * memmove_256bit_as(void *dest, const void *src, size_t len)
       _mm256_stream_si256(--nextd, _mm256_stream_load_si256(--nexts));
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2091,6 +2103,8 @@ void * memmove_256bit_64B_as(void *dest, const void *src, size_t len)
       _mm256_stream_si256(--nextd, _mm256_stream_load_si256(--nexts)); // 2
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2123,6 +2137,8 @@ void * memmove_256bit_128B_as(void *dest, const void *src, size_t len)
       _mm256_stream_si256(--nextd, _mm256_stream_load_si256(--nexts)); // 4
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2163,6 +2179,8 @@ void * memmove_256bit_256B_as(void *dest, const void *src, size_t len)
       _mm256_stream_si256(--nextd, _mm256_stream_load_si256(--nexts)); // 8
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2220,6 +2238,8 @@ void * memmove_256bit_512B_as(void *dest, const void *src, size_t len)
       _mm256_stream_si256(--nextd, _mm256_stream_load_si256(--nexts)); // 16
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2252,6 +2272,8 @@ void * memmove_512bit_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts));
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2280,6 +2302,8 @@ void * memmove_512bit_128B_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 2
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2312,6 +2336,8 @@ void * memmove_512bit_256B_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 4
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2352,6 +2378,8 @@ void * memmove_512bit_512B_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 8
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2411,6 +2439,8 @@ void * memmove_512bit_1kB_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 16
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2500,6 +2530,8 @@ void * memmove_512bit_2kB_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 32
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -2653,6 +2685,8 @@ void * memmove_512bit_4kB_as(void *dest, const void *src, size_t len)
       _mm512_stream_si512(--nextd, _mm512_stream_load_si512(--nexts)); // 32
     }
   }
+  _mm_sfence();
+
   return dest;
 }
 
@@ -4000,25 +4034,39 @@ void * AVX_memmove(void *dest, void *src, size_t numbytes)
 
     if((char *)dest < (char *)src)
     {
-      // Get to an aligned position.
-      // This may be a little slower, but since it'll be mostly scalar operations
-      // alignment doesn't matter. Worst case it uses two vector functions, and
-      // this process only needs to be done once per call if dest is unaligned.
-      memmove_large(dest, src, numbytes_to_align);
-      // Now this should be faster since stores are aligned.
-      memmove_large(destoffset, srcoffset, numbytes - numbytes_to_align); // NOTE: Can't use streaming due to potential src misalignment
-      // On Haswell and up, cross cache line loads have a negligible penalty.
-      // Thus this will be slower on Sandy & Ivy Bridge, though Ivy Bridge will
-      // fare a little better (~2x, maybe?). Ryzen should generally fall somewhere
-      // inbetween Sandy Bridge and Haswell/Skylake on that front.
-      // NOTE: These are just rough theoretical estimates.
+      if(numbytes > numbytes_to_align)
+      {
+        // Get to an aligned position.
+        // This may be a little slower, but since it'll be mostly scalar operations
+        // alignment doesn't matter. Worst case it uses two vector functions, and
+        // this process only needs to be done once per call if dest is unaligned.
+        memmove_large(dest, src, numbytes_to_align);
+        // Now this should be faster since stores are aligned.
+        memmove_large(destoffset, srcoffset, numbytes - numbytes_to_align); // NOTE: Can't use streaming due to potential src misalignment
+        // On Haswell and up, cross cache line loads have a negligible penalty.
+        // Thus this will be slower on Sandy & Ivy Bridge, though Ivy Bridge will
+        // fare a little better (~2x, maybe?). Ryzen should generally fall somewhere
+        // inbetween Sandy Bridge and Haswell/Skylake on that front.
+        // NOTE: These are just rough theoretical estimates.
+      }
+      else // Small size
+      {
+        memmove_large(dest, src, numbytes);
+      }
     }
     else // src < dest
     {
-      // Move bulk, up to lowest alignment line
-      memmove_large_reverse(destoffset, srcoffset, numbytes - numbytes_to_align);
-      // Move remainder
-      memmove_large_reverse(dest, src, numbytes_to_align);
+      if(numbytes > numbytes_to_align)
+      {
+        // Move bulk, up to lowest alignment line
+        memmove_large_reverse(destoffset, srcoffset, numbytes - numbytes_to_align);
+        // Move remainder
+        memmove_large_reverse(dest, src, numbytes_to_align);
+      }
+      else // Small size
+      {
+        memmove_large_reverse(dest, src, numbytes);
+      }
     }
   }
 

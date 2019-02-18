@@ -28,7 +28,7 @@ void * memcpy (void *dest, const void *src, size_t len)
 //  AVX Memory Functions: AVX Memcpy
 //==============================================================================
 //
-// Version 1.2
+// Version 1.3
 //
 // Author:
 //  KNNSpeed
@@ -1012,6 +1012,7 @@ void * memcpy_128bit_as(void *dest, const void *src, size_t len)
   {
     _mm_stream_si128(d++, _mm_stream_load_si128(s++));
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1027,6 +1028,7 @@ void * memcpy_128bit_32B_as(void *dest, const void *src, size_t len)
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 1
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1044,6 +1046,7 @@ void * memcpy_128bit_64B_as(void *dest, const void *src, size_t len)
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 3
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1065,6 +1068,7 @@ void * memcpy_128bit_128B_as(void *dest, const void *src, size_t len)
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 7
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1094,6 +1098,7 @@ void * memcpy_128bit_256B_as(void *dest, const void *src, size_t len)
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 15
     _mm_stream_si128(d++, _mm_stream_load_si128(s++)); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1116,6 +1121,7 @@ void * memcpy_256bit_as(void *dest, const void *src, size_t len)
   {
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++));
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1131,6 +1137,7 @@ void * memcpy_256bit_64B_as(void *dest, const void *src, size_t len)
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 1
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1148,6 +1155,7 @@ void * memcpy_256bit_128B_as(void *dest, const void *src, size_t len)
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 3
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1169,6 +1177,7 @@ void * memcpy_256bit_256B_as(void *dest, const void *src, size_t len)
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 7
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1198,6 +1207,7 @@ void * memcpy_256bit_512B_as(void *dest, const void *src, size_t len)
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 15
     _mm256_stream_si256(d++, _mm256_stream_load_si256(s++)); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1218,6 +1228,7 @@ void * memcpy_512bit_as(void *dest, const void *src, size_t len)
   {
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++));
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1233,6 +1244,7 @@ void * memcpy_512bit_128B_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 1
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1250,6 +1262,7 @@ void * memcpy_512bit_256B_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 3
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1271,6 +1284,7 @@ void * memcpy_512bit_512B_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 7
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1300,6 +1314,7 @@ void * memcpy_512bit_1kB_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 15
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1345,6 +1360,7 @@ void * memcpy_512bit_2kB_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 31
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 32
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1422,6 +1438,7 @@ void * memcpy_512bit_4kB_as(void *dest, const void *src, size_t len)
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 31
     _mm512_stream_si512(d++, _mm512_stream_load_si512(s++)); // 32
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -2134,21 +2151,28 @@ void * AVX_memcpy(void *dest, void *src, size_t numbytes)
   {
     size_t numbytes_to_align = (uintptr_t)dest & BYTE_ALIGNMENT;
 
-    void * destoffset = (char*)dest + numbytes_to_align;
-    void * srcoffset = (char*)src + numbytes_to_align;
+    if(numbytes > numbytes_to_align)
+    {
+      void * destoffset = (char*)dest + numbytes_to_align;
+      void * srcoffset = (char*)src + numbytes_to_align;
 
-    // Get to an aligned position.
-    // This may be a little slower, but since it'll be mostly scalar operations
-    // alignment doesn't matter. Worst case it uses two vector functions, and
-    // this process only needs to be done once per call if dest is unaligned.
-    memcpy_large(dest, src, numbytes_to_align);
-    // Now this should be faster since stores are aligned.
-    memcpy_large(destoffset, srcoffset, numbytes - numbytes_to_align); // Can't use streaming due to potential src misalignment
-    // On Haswell and up, cross cache line loads have a negligible penalty.
-    // Thus this will be slower on Sandy & Ivy Bridge, though Ivy Bridge will
-    // fare a little better (~2x, maybe?). Ryzen should generally fall somewhere
-    // inbetween Sandy Bridge and Haswell/Skylake on that front.
-    // NOTE: These are just rough theoretical estimates.
+      // Get to an aligned position.
+      // This may be a little slower, but since it'll be mostly scalar operations
+      // alignment doesn't matter. Worst case it uses two vector functions, and
+      // this process only needs to be done once per call if dest is unaligned.
+      memcpy_large(dest, src, numbytes_to_align);
+      // Now this should be faster since stores are aligned.
+      memcpy_large(destoffset, srcoffset, numbytes - numbytes_to_align); // Can't use streaming due to potential src misalignment
+      // On Haswell and up, cross cache line loads have a negligible penalty.
+      // Thus this will be slower on Sandy & Ivy Bridge, though Ivy Bridge will
+      // fare a little better (~2x, maybe?). Ryzen should generally fall somewhere
+      // inbetween Sandy Bridge and Haswell/Skylake on that front.
+      // NOTE: These are just rough theoretical estimates.
+    }
+    else // Small size
+    {
+      memcpy_large(dest, src, numbytes);
+    }
   }
 
   return returnval;

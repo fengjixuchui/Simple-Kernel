@@ -26,7 +26,7 @@ void * memset (void *dest, const uint8_t val, size_t len)
 //  AVX Memory Functions: AVX Memset
 //==============================================================================
 //
-// Version 1.2
+// Version 1.3
 //
 // Author:
 //  KNNSpeed
@@ -2992,38 +2992,52 @@ void * AVX_memset(void *dest, const uint8_t val, size_t numbytes)
 
     if(val == 0)
     {
-      // Get to an aligned position.
-      // This may be a little slower, but since it'll be mostly scalar operations
-      // alignment doesn't matter. Worst case it uses two vector functions, and
-      // this process only needs to be done once per call if dest is unaligned.
-      memset_zeroes(dest, numbytes_to_align);
-      dest = (char*)dest + numbytes_to_align;
-      // Now this should be near the fastest possible since stores are aligned.
-      if((numbytes - numbytes_to_align) > CACHESIZELIMIT)
+      if(numbytes > numbytes_to_align)
       {
-        memset_zeroes_as(dest, numbytes - numbytes_to_align);
+        // Get to an aligned position.
+        // This may be a little slower, but since it'll be mostly scalar operations
+        // alignment doesn't matter. Worst case it uses two vector functions, and
+        // this process only needs to be done once per call if dest is unaligned.
+        memset_zeroes(dest, numbytes_to_align);
+        dest = (char*)dest + numbytes_to_align;
+        // Now this should be near the fastest possible since stores are aligned.
+        if((numbytes - numbytes_to_align) > CACHESIZELIMIT)
+        {
+          memset_zeroes_as(dest, numbytes - numbytes_to_align);
+        }
+        else
+        {
+          memset_zeroes_a(dest, numbytes - numbytes_to_align);
+        }
       }
-      else
+      else // Small size
       {
-        memset_zeroes_a(dest, numbytes - numbytes_to_align);
+        memset_zeroes(dest, numbytes);
       }
     }
     else
     {
-      // Get to an aligned position.
-      // This may be a little slower, but since it'll be mostly scalar operations
-      // alignment doesn't matter. Worst case it uses two vector functions, and
-      // this process only needs to be done once per call if dest is unaligned.
-      memset_large(dest, val, numbytes_to_align);
-      dest = (char*)dest + numbytes_to_align;
-      // Now this should be near the fastest possible since stores are aligned.
-      if((numbytes - numbytes_to_align) > CACHESIZELIMIT)
+      if(numbytes > numbytes_to_align)
       {
-        memset_large_as(dest, val, numbytes - numbytes_to_align);
+        // Get to an aligned position.
+        // This may be a little slower, but since it'll be mostly scalar operations
+        // alignment doesn't matter. Worst case it uses two vector functions, and
+        // this process only needs to be done once per call if dest is unaligned.
+        memset_large(dest, val, numbytes_to_align);
+        dest = (char*)dest + numbytes_to_align;
+        // Now this should be near the fastest possible since stores are aligned.
+        if((numbytes - numbytes_to_align) > CACHESIZELIMIT)
+        {
+          memset_large_as(dest, val, numbytes - numbytes_to_align);
+        }
+        else
+        {
+          memset_large_a(dest, val, numbytes - numbytes_to_align);
+        }
       }
-      else
+      else // Small size
       {
-        memset_large_a(dest, val, numbytes - numbytes_to_align);
+        memset_large(dest, val, numbytes);
       }
     }
   }
@@ -3060,19 +3074,26 @@ void * AVX_memset_4B(void *dest, const uint32_t val, size_t numbytes_div_4)
       return NULL;
     }
 
-    // Get to an aligned position.
-    // This process only needs to be done once per call if dest is unaligned.
-    memset_large_4B(dest, val, numbytes_to_align >> 2);
-    dest = (char*)dest + numbytes_to_align;
-    // Now this should be near the fastest possible since stores are aligned.
-    // ...and in memset there are only stores.
-    if((numbytes_div_4 * 4 - numbytes_to_align) > CACHESIZELIMIT)
+    if(numbytes_div_4 > (numbytes_to_align >> 2))
     {
-      memset_large_4B_as(dest, val, numbytes_div_4 - (numbytes_to_align >> 2));
+      // Get to an aligned position.
+      // This process only needs to be done once per call if dest is unaligned.
+      memset_large_4B(dest, val, numbytes_to_align >> 2);
+      dest = (char*)dest + numbytes_to_align;
+      // Now this should be near the fastest possible since stores are aligned.
+      // ...and in memset there are only stores.
+      if((numbytes_div_4 * 4 - numbytes_to_align) > CACHESIZELIMIT)
+      {
+        memset_large_4B_as(dest, val, numbytes_div_4 - (numbytes_to_align >> 2));
+      }
+      else
+      {
+        memset_large_4B_a(dest, val, numbytes_div_4 - (numbytes_to_align >> 2));
+      }
     }
-    else
+    else // Small size
     {
-      memset_large_4B_a(dest, val, numbytes_div_4 - (numbytes_to_align >> 2));
+      memset_large_4B(dest, val, numbytes_div_4);
     }
   }
 

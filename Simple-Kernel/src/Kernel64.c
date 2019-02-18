@@ -137,193 +137,54 @@ const unsigned char load_image3[144] = {
 // NOTE: Using Output_render_bitmap instead of Output_render_text technically allows any arbitrary font to be used as long as it is stored the same way as the included font8x8.
 // A character would need to be passed as otherfont['a'] instead of just 'a' in this case.
 
-//void kernel_main(EFI_MEMORY_DESCRIPTOR * Memory_Map, EFI_RUNTIME_SERVICES * RTServices, EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE * GPU_Mode, EFI_FILE_INFO * FileMeta, void * RSDP)
+/* Reminder of the LOADER_PARAMS format:
+
+  typedef struct {
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
+    UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
+  } GPU_CONFIG;
+
+  typedef struct {
+    EFI_MEMORY_DESCRIPTOR  *Memory_Map;
+    EFI_RUNTIME_SERVICES   *RTServices;
+    GPU_CONFIG             *GPU_Configs;
+    EFI_FILE_INFO          *FileMeta;
+    void                   *RSDP;
+  } LOADER_PARAMS;
+*/
+
+// Old: void kernel_main(EFI_MEMORY_DESCRIPTOR * Memory_Map, EFI_RUNTIME_SERVICES * RTServices, EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE * GPU_Mode, EFI_FILE_INFO * FileMeta, void * RSDP)
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
   Initialize_Global_Printf_Defaults(LP->GPU_Configs->GPUArray[0]);
   // This function call is required to initialize printf. Set default GPU as GPU 0. This function can also be used to reset all global printf values and reassign a new default GPU at any time.
   // Technically, printf is immediately usable now. I'd recommend waitng for AVX/SSE init just in case the compiler uses them when optimizing printf.
+  Enable_AVX(); // ENABLING AVX ASAP
+  // All good now.
 
-/* ENABLING AVX ASAP
-// TODO: AVX512 check
-  // Checking CPUID means determining if bit 21 of R/EFLAGS can be toggled
-  uint64_t rflags = control_register_rw('f', 0, 0);
-//  printf("RFLAGS: %#qx\r\n", rflags);
-  uint64_t rflags2 = rflags ^ (1 << 21);
-  control_register_rw('f', rflags2, 1);
-  rflags2 = control_register_rw('f', 0, 0);
-  if(rflags2 == rflags)
+// I know this bit isn't always set by default. Set it.
+  uint64_t cr0 = control_register_rw(0, 0, 0);
+  if(!(cr0 & (1 << 5)))
   {
-    printf("CPUID is not supported.\r\n");
-  }
-  else
-  {
-//    printf("CPUID is supported.\r\n");
-
-    uint64_t rcx, rdx = 0;
-    asm volatile("cpuid"
-                 : "=c" (rcx), "=d" (rdx) // Outputs
-                 : "a" (0x01) // The value to put into %rax
-                 : "%rax", "%rbx"// CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
-               );
-
-    if(rcx & (1 << 27))
+    uint64_t cr0_2 = cr0 ^ (1 << 5);
+    control_register_rw(0, cr0_2, 1);
+    cr0_2 = control_register_rw(0, 0, 0);
+    if(cr0_2 == cr0)
     {
-//      printf("AVX: OSXSAVE = 1\r\n");
-
-      if(rcx & (1 << 28))
-      {
-//        printf("AVX supported. Enabling AVX... ");
-        uint64_t xcr0 = xcr_rw(0, 0, 0);
-        xcr_rw(0, xcr0 | 0x7, 1);
-        xcr0 = xcr_rw(0, 0, 0);
-        if((xcr0 & 0x7) == 0x7)
-        {
-          Colorscreen(GPU, Global_Print_Info.background_color); // We can use this AVX-optimized function now!
-          printf("AVX enabled.\r\n");
-        }
-        else
-        {
-          printf("Unable to set AVX.\r\n");
-        }
-      }
-      else
-      {
-        printf("AVX not supported. Checking for latest SSE features:\r\n");
-        if(rcx & (1 << 20))
-        {
-          printf("Up to SSE4.2 supported.\r\n");
-        }
-        else
-        {
-          if(rcx & (1 << 19))
-          {
-            printf("Up to SSE4.1 supported.\r\n");
-          }
-          else
-          {
-            if(rcx & (1 << 9))
-            {
-              printf("Up to SSSE3 supported.\r\n");
-            }
-            else
-            {
-              if(rcx & 1)
-              {
-                printf("Up to SSE3 supported.\r\n");
-              }
-              else
-              {
-                if(rdx & (1 << 26))
-                {
-                  printf("Up to SSE2 supported.\r\n");
-                }
-                else
-                {
-                  printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    else
-    {
-//      printf("AVX: OSXSAVE = 0\r\n");
-      if(rcx & (1 << 26))
-      {
-//        printf("AVX: XSAVE supported. Enabling OSXAVE... ");
-        uint64_t cr4 = control_register_rw(4, 0, 0);
-        control_register_rw(4, cr4 ^ (1 << 18), 1);
-        cr4 = control_register_rw(4, 0, 0);
-        if(cr4 & (1 << 18))
-        {
-//          printf("OSXSAVE enabled.\r\n");
-
-          if(rcx & (1 << 28))
-          {
-//            printf("AVX supported. Enabling AVX... ");
-            uint64_t xcr0 = xcr_rw(0, 0, 0);
-            xcr_rw(0, xcr0 | 0x7, 1);
-            xcr0 = xcr_rw(0, 0, 0);
-            if((xcr0 & 0x7) == 0x7)
-            {
-              Colorscreen(GPU, Global_Print_Info.background_color); // We can use this AVX-optimized function now!
-              printf("AVX enabled.\r\n");
-            }
-            else
-            {
-              printf("Unable to set AVX.\r\n");
-            }
-          }
-          else
-          {
-            printf("AVX not supported. Checking for latest SSE features:\r\n");
-            if(rcx & (1 << 20))
-            {
-              printf("Up to SSE4.2 supported.\r\n");
-            }
-            else
-            {
-              if(rcx & (1 << 19))
-              {
-                printf("Up to SSE4.1 supported.\r\n");
-              }
-              else
-              {
-                if(rcx & (1 << 9))
-                {
-                  printf("Up to SSSE3 supported.\r\n");
-                }
-                else
-                {
-                  if(rcx & 1)
-                  {
-                    printf("Up to SSE3 supported.\r\n");
-                  }
-                  else
-                  {
-                    if(rdx & (1 << 26))
-                    {
-                      printf("Up to SSE2 supported.\r\n");
-                    }
-                    else
-                    {
-                      printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        else
-        {
-          printf("Unable to set OSXSAVE in CR4.\r\n");
-        }
-      }
-      else
-      {
-        printf("AVX: XSAVE not supported.\r\n");
-      }
+      printf("Error setting CR0.NE bit.\r\n");
     }
   }
-*/
-  /*
-    typedef struct {
-      EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
-      UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
-    } GPU_CONFIG;
 
-    typedef struct {
-      EFI_MEMORY_DESCRIPTOR  *Memory_Map;
-      EFI_RUNTIME_SERVICES   *RTServices;
-      GPU_CONFIG             *GPU_Configs;
-      EFI_FILE_INFO          *FileMeta;
-      void                   *RSDP;
-    } LOADER_PARAMS;
-  */
+  // Main body start
+
+  char brandstring[48] = {0};
+  Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
+  printf("%.48s\r\n", brandstring);
+
+  char Manufacturer_ID[13] = {0};
+  Get_Manufacturer_ID(Manufacturer_ID); // Returns a char* pointer to Manufacturer_ID. Don't need it here, though.
+  printf("%s\r\n\n", Manufacturer_ID);
+
 
   /*
   typedef UINT64          EFI_PHYSICAL_ADDRESS;
@@ -351,167 +212,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
     bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
   }
 
-  uint64_t cr0 = control_register_rw(0, 0, 0);
-  if(!(cr0 & (1 << 5)))
-  {
-    uint64_t cr0_2 = cr0 ^ (1 << 5);
-    control_register_rw(0, cr0_2, 1);
-    cr0_2 = control_register_rw(0, 0, 0);
-    if(cr0_2 == cr0)
-    {
-      printf("Error setting CR0.NE bit.\r\n");
-    }
-    else
-    {
-      cr0 = cr0_2;
-    }
-  }
-  printf("CR0: %#qx\r\n", cr0);
-//  printf("CR1: %#qx\r\n", control_register_rw(1, 0, 0));
-  uint64_t cr2 = control_register_rw(2, 0, 0);
-  printf("CR2: %#qx\r\n", cr2);
-  uint64_t cr3 = control_register_rw(3, 0, 0);
-  printf("CR3: %#qx\r\n", cr3);
-  uint64_t cr4 = control_register_rw(4, 0, 0);
-  printf("CR4: %#qx\r\n", cr4);
-  uint64_t cr8 = control_register_rw(8, 0, 0);
-  printf("CR8: %#qx\r\n", cr8);
-  uint64_t efer = msr_rw(0xC0000080, 0, 0);
-  printf("IA32_EFER: %#qx\r\n", efer);
-  uint64_t rflags = control_register_rw('f', 0, 0);
-  printf("RFLAGS: %#qx\r\n", rflags);
-  // Checking CPUID means determining if bit 21 of FLAGS can be toggled
-  uint64_t rflags2 = rflags ^ (1 << 21);
-  control_register_rw('f', rflags2, 1);
-  rflags2 = control_register_rw('f', 0, 0);
-  // Reading CS to get GDT entry to check for 64-bit mode
-  uint64_t cs = read_cs();
-  printf("CS: %#qx\r\n", cs);
-
-  // Decode some of the results from the above hex
-  printf("\r\n");
-  if(cr0 & 0x01)
-  {
-    printf("Protected mode is enabled. (CR0.PE = 1)\r\n");
-  }
-  if(cr0 & (1 << 31))
-  {
-    printf("Paging is enabled. (CR0.PG = 1)\r\n");
-  }
-  if(cr0 & (1 << 1))
-  {
-    printf("SSE: CR0.MP = 1\r\n");
-  }
-  else
-  {
-    printf("SSE: CR0.MP = 0, need to enable\r\n");
-  }
-  if(cr0 & (1 << 2))
-  {
-    printf("SSE: CR0.EM = 1, need to disable\r\n");
-  }
-  else
-  {
-    printf("SSE: CR0.EM = 0\r\n");
-  }
-  if(cr0 & (1 << 3))
-  {
-    printf("SSE: CR0.TS = 1, need to disable\r\n");
-  }
-  else
-  {
-    printf("SSE: CR0.TS = 0\r\n");
-  }
-  if(cr4 & (1 << 5))
-  {
-    printf("PAE is enabled. (CR4.PAE = 1)\r\n");
-  }
-  if(cr4 & (1 << 9))
-  {
-    printf("SSE: CR4.OSFXSR = 1\r\n");
-  }
-  else
-  {
-    printf("SSE: CR4.OSFXSR = 0\r\n");
-  }
-  if(cr4 & (1 << 10))
-  {
-    printf("SSE: CR4.OSXMMEXCPT = 1\r\n");
-  }
-  else
-  {
-    printf("SSE: CR4.OSXMMEXCPT = 0\r\n");
-  }
-  if(cr4 & (1 << 18))
-  {
-    printf("SSE/AVX: CR4.OSXSAVE = 1\r\n");
-  }
-  else
-  {
-    printf("SSE/AVX: CR4.OSXSAVE = 0\r\n");
-  }
-  // Verify we're in long mode (UEFI by default should have put us there)
-  if((efer & 0x500) == 0x500)
-  {
-    printf("Long mode is enabled and active. (IA32e.LME = 1 & IA32e.LMA = 1)\r\n");
-  }
-  else
-  {
-    printf("For some reason long mode is not enabled and active.\r\n");
-  }
-  if(rflags & (1 << 9))
-  {
-    printf("Interrupts are enabled. (IF = 1)\r\n");
-  }
-  else
-  {
-    printf("Interrupts are disabled. (IF = 0)\r\n");
-  }
-
-  uint16_t gdt_index = cs >> 3; // This index is how many GDT_ENTRY_STRUCTs above GDT BaseAddress the current code segment is
-  // Check if 64-bit mode's all set to go.
-  DT_STRUCT gdt = get_gdtr(); // GDT is up to 64k from base addr, but CS points to max index in x86_64
-  printf("GDTR addr: %#qx, limit: %#hx\r\n", gdt.BaseAddress, gdt.Limit);
-
-  printf("CS GDT Entry: %#qx\r\n", ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index]);
-//  printf("CS GDT Entry: %#qx\r\n", *((GDT_ENTRY_STRUCT *)(gdt.BaseAddress + 8*gdt_index)) ); // Same thing
-
-  if( (((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 6)) == 0 ) // CS.D = 0 means "not in 32-bit mode" (either 16- or 64-bit mode)
-  {
-    if( ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 5) ) // CS.L = 1 means 64-bit mode if CS.D = 0.
-    {
-      printf("All good: 64-bit mode enabled. (CS.D = 0, CS.L = 1)\r\n");
-    }
-  }
-
-  if(rflags2 == rflags)
-  {
-    printf("CPUID is not supported.\r\n");
-  }
-  else
-  {
-    printf("CPUID is supported.\r\n");
-    printf("\r\n");
-    cpu_features(0, 0);
-    printf("\r\n");
-    cpu_features(1, 0);
-    printf("\r\n");
-    cpu_features(7, 0);
-    printf("\r\n");
-    cpu_features(0x80000000, 0);
-    printf("\r\n");
-    cpu_features(0x0D, 0);
-    printf("\r\n");
-    cpu_features(0x0D, 1);
-    printf("\r\n");
-    cpu_features(0x80000001, 0);
-    printf("\r\n");
-    cpu_features(0x80000006, 0);
-    printf("\r\n");
-    cpu_features(0x80000008, 0);
-    printf("\r\n");
-  }
-
+  Print_All_CRs_and_Some_Major_CPU_Features(); // The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
 
   // ASM so that GCC doesn't mess with this loop. This is about as optimized this can get.
   asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
@@ -674,6 +375,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 
   LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
 }
+// END MAIN
 
 uint64_t get_tick(void) // Finally a way to tell time! Ticks since last CPU reset.
 {
@@ -686,7 +388,7 @@ uint64_t get_tick(void) // Finally a way to tell time! Ticks since last CPU rese
     return (high << 32 | low);
 }
 
-void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
+void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 {
   // x86 does not memory-map control registers, unlike, for example, STM32 chips
   // System control registers like CR0, CR1, CR2, CR3, CR4, CR8, and EFLAGS
@@ -722,14 +424,16 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
     {
       printf("You're in a hypervisor!\r\n");
     }
+
     if(rcx & (1 << 12))
     {
       printf("FMA supported.\r\n");
     }
     else
     {
-      printf("FMA not supported.");
+      printf("FMA not supported.\r\n");
     }
+
     if(rcx & (1 << 1))
     {
       if(rcx & (1 << 25))
@@ -741,142 +445,67 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
         printf("PCLMULQDQ supported (but not AESNI).\r\n");
       }
     }
+
     if(rcx & (1 << 27))
     {
       printf("AVX: OSXSAVE = 1\r\n");
-      if(rcx & (1 << 28))
-      {
-        printf("AVX supported. Enabling AVX... ");
-        uint64_t xcr0 = xcr_rw(0, 0, 0);
-        xcr_rw(0, xcr0 | 0x7, 1);
-        xcr0 = xcr_rw(0, 0, 0);
-        if((xcr0 & 0x7) == 0x7)
-        {
-          printf("AVX enabled.\r\n");
-        }
-        else
-        {
-          printf("Unable to set AVX.\r\n");
-        }
-      }
-      else
-      {
-        printf("AVX not supported. Checking for latest SSE features:\r\n");
-        if(rcx & (1 << 20))
-        {
-          printf("Up to SSE4.2 supported.\r\n");
-        }
-        else
-        {
-          if(rcx & (1 << 19))
-          {
-            printf("Up to SSE4.1 supported.\r\n");
-          }
-          else
-          {
-            if(rcx & (1 << 9))
-            {
-              printf("Up to SSSE3 supported.\r\n");
-            }
-            else
-            {
-              if(rcx & 1)
-              {
-                printf("Up to SSE3 supported.\r\n");
-              }
-              else
-              {
-                if(rdx & (1 << 26))
-                {
-                  printf("Up to SSE2 supported.\r\n");
-                }
-                else
-                {
-                  printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
-                }
-              }
-            }
-          }
-        }
-      }
     }
     else
     {
       printf("AVX: OSXSAVE = 0\r\n");
-      if(rcx & (1 << 26))
-      {
-        printf("AVX: XSAVE supported. Enabling OSXAVE... ");
-        uint64_t cr4 = control_register_rw(4, 0, 0);
-        control_register_rw(4, cr4 ^ (1 << 18), 1);
-        cr4 = control_register_rw(4, 0, 0);
-        if(cr4 & (1 << 18))
-        {
-          printf("OSXSAVE enabled.\r\n");
+    }
 
-          if(rcx & (1 << 28))
-          {
-            printf("AVX supported. Enabling AVX... ");
-            uint64_t xcr0 = xcr_rw(0, 0, 0);
-            xcr_rw(0, xcr0 | 0x7, 1);
-            xcr0 = xcr_rw(0, 0, 0);
-            if((xcr0 & 0x7) == 0x7)
-            {
-              printf("AVX enabled.\r\n");
-            }
-            else
-            {
-              printf("Unable to set AVX.\r\n");
-            }
-          }
-          else
-          {
-            printf("AVX not supported. Checking for latest SSE features:\r\n");
-            if(rcx & (1 << 20))
-            {
-              printf("Up to SSE4.2 supported.\r\n");
-            }
-            else
-            {
-              if(rcx & (1 << 19))
-              {
-                printf("Up to SSE4.1 supported.\r\n");
-              }
-              else
-              {
-                if(rcx & (1 << 9))
-                {
-                  printf("Up to SSSE3 supported.\r\n");
-                }
-                else
-                {
-                  if(rcx & 1)
-                  {
-                    printf("Up to SSE3 supported.\r\n");
-                  }
-                  else
-                  {
-                    if(rdx & (1 << 26))
-                    {
-                      printf("Up to SSE2 supported.\r\n");
-                    }
-                    else
-                    {
-                      printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-        else
-        {
-          printf("Unable to set OSXSAVE in CR4.\r\n");
-        }
+    if(rcx & (1 << 26))
+    {
+      printf("AVX: XSAVE supported.\r\n");
+    }
+    else
+    {
+      printf("AVX: XSAVE not supported.\r\n");
+    }
+
+    if(rcx & (1 << 28))
+    {
+      printf("AVX supported.\r\n");
+    }
+    else
+    {
+      printf("AVX not supported. Checking for latest SSE features:\r\n");
+      if(rcx & (1 << 20))
+      {
+        printf("Up to SSE4.2 supported.\r\n");
       }
       else
       {
-        printf("AVX: XSAVE not supported.\r\n");
+        if(rcx & (1 << 19))
+        {
+          printf("Up to SSE4.1 supported.\r\n");
+        }
+        else
+        {
+          if(rcx & (1 << 9))
+          {
+            printf("Up to SSSE3 supported.\r\n");
+          }
+          else
+          {
+            if(rcx & 1)
+            {
+              printf("Up to SSE3 supported.\r\n");
+            }
+            else
+            {
+              if(rdx & (1 << 26))
+              {
+                printf("Up to SSE2 supported.\r\n");
+              }
+              else
+              {
+                printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
+              }
+            }
+          }
+        }
       }
     }
 
@@ -896,7 +525,6 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
     {
       printf("FXSR supported.\r\n");
     }
-
   }
   else if(rax_value == 7 && rcx_value == 0)
   {
@@ -918,18 +546,7 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
     // AVX512 feature check if AVX512 supported
     if(rbx & (1 << 16))
     {
-      printf("AVX512F supported. Enabling... ");
-      uint64_t xcr0 = xcr_rw(0, 0, 0);
-      xcr_rw(0, xcr0 | 0xE7, 1);
-      xcr0 = xcr_rw(0, 0, 0);
-      if((xcr0 & 0xE7) == 0xE7)
-      {
-        printf("AVX512 enabled.\r\n");
-      }
-      else
-      {
-        printf("Unable to set AVX512.\r\n");
-      }
+      printf("AVX512F supported.\r\n");
       printf("Checking other supported AVX512 features:\r\n");
       if(rbx & (1 << 17))
       {
@@ -1097,6 +714,622 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value) // TODO
 
     printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
   }
+}
+
+void Enable_AVX(void)
+{
+  // Checking CPUID means determining if bit 21 of R/EFLAGS can be toggled
+  uint64_t rflags = control_register_rw('f', 0, 0);
+//  printf("RFLAGS: %#qx\r\n", rflags);
+  uint64_t rflags2 = rflags ^ (1 << 21);
+  control_register_rw('f', rflags2, 1);
+  rflags2 = control_register_rw('f', 0, 0);
+  if(rflags2 == rflags)
+  {
+    printf("CPUID is not supported.\r\n");
+  }
+  else
+  {
+//    printf("CPUID is supported.\r\n");
+// Check if OSXSAVE has already been set for some reason. Implies XSAVE support.
+    uint64_t rbx, rcx, rdx = 0;
+    asm volatile("cpuid"
+                 : "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (0x01) // The value to put into %rax
+                 : "%rbx" // CPUID would clobber any of the abcd registers not listed explicitly
+               );
+
+    if(rcx & (1 << 27))
+    {
+//      printf("AVX: OSXSAVE = 1\r\n");
+// OSXSAVE has already been set, so it doesn't need to be re-set.
+      if(rcx & (1 << 28))
+      { // AVX is supported.
+//        printf("AVX supported. Enabling AVX... ");
+        uint64_t xcr0 = xcr_rw(0, 0, 0);
+        xcr_rw(0, xcr0 | 0x7, 1);
+        xcr0 = xcr_rw(0, 0, 0);
+
+        if((xcr0 & 0x7) == 0x7)
+        { // AVX successfully enabled, so we have that.
+          // Now check AVX2 & AVX512
+          asm volatile("cpuid"
+                       : "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                       : "a" (0x07), "c" (0x00) // The values to put into %rax and %rcx
+                       : // CPUID would clobber any of the abcd registers not listed explicitly
+                    );
+
+          // AVX512 feature check if AVX512 supported
+          if(rbx & (1 << 16))
+          { // AVX512 is supported
+//            printf("AVX512F supported. Enabling... ");
+            uint64_t xcr0 = xcr_rw(0, 0, 0);
+            xcr_rw(0, xcr0 | 0xE7, 1);
+            xcr0 = xcr_rw(0, 0, 0);
+
+            if((xcr0 & 0xE7) == 0xE7)
+            { // AVX512 sucessfully enabled
+              Colorscreen(Global_Print_Info.defaultGPU, Global_Print_Info.background_color); // We can use SSE/AVX/AVX512-optimized functions now!
+              printf("AVX512 enabled.\r\n");
+              // All done here.
+            }
+            else
+            {
+              printf("Unable to set AVX512.\r\n");
+            }
+            printf("Checking other supported AVX512 features:\r\n");
+            if(rbx & (1 << 17))
+            {
+              printf("AVX512DQ\r\n");
+            }
+            if(rbx & (1 << 21))
+            {
+              printf("AVX512_IFMA\r\n");
+            }
+            if(rbx & (1 << 26))
+            {
+              printf("AVX512PF\r\n");
+            }
+            if(rbx & (1 << 27))
+            {
+              printf("AVX512ER\r\n");
+            }
+            if(rbx & (1 << 28))
+            {
+              printf("AVX512CD\r\n");
+            }
+            if(rbx & (1 << 30))
+            {
+              printf("AVX512BW\r\n");
+            }
+            if(rbx & (1 << 31))
+            {
+              printf("AVX512VL\r\n");
+            }
+            if(rcx & (1 << 1))
+            {
+              printf("AVX512_VBMI\r\n");
+            }
+            if(rcx & (1 << 6))
+            {
+              printf("AVX512_VBMI2\r\n");
+            }
+            if(rcx & (1 << 11))
+            {
+              printf("AVX512VNNI\r\n");
+            }
+            if(rcx & (1 << 12))
+            {
+              printf("AVX512_BITALG\r\n");
+            }
+            if(rcx & (1 << 14))
+            {
+              printf("AVX512_VPOPCNTDQ\r\n");
+            }
+            if(rdx & (1 << 2))
+            {
+              printf("AVX512_4VNNIW\r\n");
+            }
+            if(rdx & (1 << 3))
+            {
+              printf("AVX512_4FMAPS\r\n");
+            }
+            printf("End of AVX512 feature check.\r\n");
+          }
+          else
+          {
+            Colorscreen(Global_Print_Info.defaultGPU, Global_Print_Info.background_color); // We can use SSE/AVX-optimized functions now! But not AVX512 ones.
+            printf("AVX/AVX2 enabled.\r\n");
+            printf("AVX512 not supported.\r\n");
+          }
+          // End AVX512 check
+
+          if(rbx & (1 << 5))
+          {
+            printf("AVX2 supported.\r\n");
+          }
+          else
+          {
+            printf("AVX2 not supported.\r\n");
+          }
+          // Only have AVX to work with, then.
+        }
+        else
+        {
+          printf("Unable to set AVX.\r\n");
+        }
+      }
+      else
+      {
+        printf("AVX not supported. Checking for latest SSE features:\r\n");
+        if(rcx & (1 << 20))
+        {
+          printf("Up to SSE4.2 supported.\r\n");
+        }
+        else
+        {
+          if(rcx & (1 << 19))
+          {
+            printf("Up to SSE4.1 supported.\r\n");
+          }
+          else
+          {
+            if(rcx & (1 << 9))
+            {
+              printf("Up to SSSE3 supported.\r\n");
+            }
+            else
+            {
+              if(rcx & 1)
+              {
+                printf("Up to SSE3 supported.\r\n");
+              }
+              else
+              {
+                if(rdx & (1 << 26))
+                {
+                  printf("Up to SSE2 supported.\r\n");
+                }
+                else
+                {
+                  printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    else
+    {
+//      printf("AVX: OSXSAVE = 0\r\n");
+// OSXSAVE has not yet been set. Set it.
+      if(rcx & (1 << 26)) // XSAVE supported.
+      {
+//        printf("AVX: XSAVE supported. Enabling OSXSAVE... ");
+        uint64_t cr4 = control_register_rw(4, 0, 0);
+        control_register_rw(4, cr4 ^ (1 << 18), 1);
+        cr4 = control_register_rw(4, 0, 0);
+
+        if(cr4 & (1 << 18))
+        { // OSXSAVE successfully enabled.
+//          printf("OSXSAVE enabled.\r\n");
+
+          if(rcx & (1 << 28))
+          { // AVX is supported
+//            printf("AVX supported. Enabling AVX... ");
+            uint64_t xcr0 = xcr_rw(0, 0, 0);
+            xcr_rw(0, xcr0 | 0x7, 1);
+            xcr0 = xcr_rw(0, 0, 0);
+
+            if((xcr0 & 0x7) == 0x7)
+            { // AVX successfully enabled, so we have that.
+              // Now check AVX2 & AVX512
+              asm volatile("cpuid"
+                           : "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                           : "a" (0x07), "c" (0x00) // The values to put into %rax and %rcx
+                           : // CPUID would clobber any of the abcd registers not listed explicitly
+                        );
+
+              // AVX512 feature check if AVX512 supported
+              if(rbx & (1 << 16))
+              { // AVX512 is supported
+//                printf("AVX512F supported. Enabling... ");
+                uint64_t xcr0 = xcr_rw(0, 0, 0);
+                xcr_rw(0, xcr0 | 0xE7, 1);
+                xcr0 = xcr_rw(0, 0, 0);
+
+                if((xcr0 & 0xE7) == 0xE7)
+                { // AVX512 successfully enabled.
+                  Colorscreen(Global_Print_Info.defaultGPU, Global_Print_Info.background_color); // We can use SSE/AVX/AVX512-optimized functions now!
+                  printf("AVX512 enabled.\r\n");
+                  // All done here.
+                }
+                else
+                {
+                  printf("Unable to set AVX512.\r\n");
+                }
+                printf("Checking other supported AVX512 features:\r\n");
+                if(rbx & (1 << 17))
+                {
+                  printf("AVX512DQ\r\n");
+                }
+                if(rbx & (1 << 21))
+                {
+                  printf("AVX512_IFMA\r\n");
+                }
+                if(rbx & (1 << 26))
+                {
+                  printf("AVX512PF\r\n");
+                }
+                if(rbx & (1 << 27))
+                {
+                  printf("AVX512ER\r\n");
+                }
+                if(rbx & (1 << 28))
+                {
+                  printf("AVX512CD\r\n");
+                }
+                if(rbx & (1 << 30))
+                {
+                  printf("AVX512BW\r\n");
+                }
+                if(rbx & (1 << 31))
+                {
+                  printf("AVX512VL\r\n");
+                }
+                if(rcx & (1 << 1))
+                {
+                  printf("AVX512_VBMI\r\n");
+                }
+                if(rcx & (1 << 6))
+                {
+                  printf("AVX512_VBMI2\r\n");
+                }
+                if(rcx & (1 << 11))
+                {
+                  printf("AVX512VNNI\r\n");
+                }
+                if(rcx & (1 << 12))
+                {
+                  printf("AVX512_BITALG\r\n");
+                }
+                if(rcx & (1 << 14))
+                {
+                  printf("AVX512_VPOPCNTDQ\r\n");
+                }
+                if(rdx & (1 << 2))
+                {
+                  printf("AVX512_4VNNIW\r\n");
+                }
+                if(rdx & (1 << 3))
+                {
+                  printf("AVX512_4FMAPS\r\n");
+                }
+                printf("End of AVX512 feature check.\r\n");
+              }
+              else
+              {
+                Colorscreen(Global_Print_Info.defaultGPU, Global_Print_Info.background_color); // We can use SSE/AVX-optimized functions now! Just not AVX512 ones.
+                printf("AVX/AVX2 enabled.\r\n");
+                printf("AVX512 not supported.\r\n");
+              }
+              // End AVX512 check
+
+              if(rbx & (1 << 5))
+              {
+                printf("AVX2 supported.\r\n");
+              }
+              else
+              {
+                printf("AVX2 not supported.\r\n");
+              }
+              // Only have AVX to work with, then.
+            }
+            else
+            {
+              printf("Unable to set AVX.\r\n");
+            }
+          }
+          else
+          {
+            printf("AVX not supported. Checking for latest SSE features:\r\n");
+            if(rcx & (1 << 20))
+            {
+              printf("Up to SSE4.2 supported.\r\n");
+            }
+            else
+            {
+              if(rcx & (1 << 19))
+              {
+                printf("Up to SSE4.1 supported.\r\n");
+              }
+              else
+              {
+                if(rcx & (1 << 9))
+                {
+                  printf("Up to SSSE3 supported.\r\n");
+                }
+                else
+                {
+                  if(rcx & 1)
+                  {
+                    printf("Up to SSE3 supported.\r\n");
+                  }
+                  else
+                  {
+                    if(rdx & (1 << 26))
+                    {
+                      printf("Up to SSE2 supported.\r\n");
+                    }
+                    else
+                    {
+                      printf("This is one weird CPU to get this far. x86_64 mandates SSE2.\r\n");
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        else
+        {
+          printf("Unable to set OSXSAVE in CR4.\r\n");
+        }
+      }
+      else
+      {
+        printf("AVX: XSAVE not supported.\r\n");
+      }
+    }
+  }
+}
+
+// The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
+void Print_All_CRs_and_Some_Major_CPU_Features(void)
+{
+  uint64_t cr0 = control_register_rw(0, 0, 0);
+  printf("CR0: %#qx\r\n", cr0);
+//  printf("CR1: %#qx\r\n", control_register_rw(1, 0, 0));
+  uint64_t cr2 = control_register_rw(2, 0, 0);
+  printf("CR2: %#qx\r\n", cr2);
+  uint64_t cr3 = control_register_rw(3, 0, 0);
+  printf("CR3: %#qx\r\n", cr3);
+  uint64_t cr4 = control_register_rw(4, 0, 0);
+  printf("CR4: %#qx\r\n", cr4);
+  uint64_t cr8 = control_register_rw(8, 0, 0);
+  printf("CR8: %#qx\r\n", cr8);
+  uint64_t efer = msr_rw(0xC0000080, 0, 0);
+  printf("IA32_EFER: %#qx\r\n", efer);
+  uint64_t rflags = control_register_rw('f', 0, 0);
+  printf("RFLAGS: %#qx\r\n", rflags);
+  // Checking CPUID means determining if bit 21 of FLAGS can be toggled
+  uint64_t rflags2 = rflags ^ (1 << 21);
+  control_register_rw('f', rflags2, 1);
+  rflags2 = control_register_rw('f', 0, 0);
+  // Reading CS to get GDT entry to check for 64-bit mode
+  uint64_t cs = read_cs();
+  printf("CS: %#qx\r\n", cs);
+
+  // Decode some of the results from the above hex
+  printf("\r\n");
+  if(cr0 & 0x01)
+  {
+    printf("Protected mode is enabled. (CR0.PE = 1)\r\n");
+  }
+  if(cr0 & (1 << 31))
+  {
+    printf("Paging is enabled. (CR0.PG = 1)\r\n");
+  }
+  if(cr0 & (1 << 1))
+  {
+    printf("SSE: CR0.MP = 1\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.MP = 0, need to enable\r\n");
+  }
+  if(cr0 & (1 << 2))
+  {
+    printf("SSE: CR0.EM = 1, need to disable\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.EM = 0\r\n");
+  }
+  if(cr0 & (1 << 3))
+  {
+    printf("SSE: CR0.TS = 1, need to disable\r\n");
+  }
+  else
+  {
+    printf("SSE: CR0.TS = 0\r\n");
+  }
+  if(cr4 & (1 << 5))
+  {
+    printf("PAE is enabled. (CR4.PAE = 1)\r\n");
+  }
+  if(cr4 & (1 << 9))
+  {
+    printf("SSE: CR4.OSFXSR = 1\r\n");
+  }
+  else
+  {
+    printf("SSE: CR4.OSFXSR = 0\r\n");
+  }
+  if(cr4 & (1 << 10))
+  {
+    printf("SSE: CR4.OSXMMEXCPT = 1\r\n");
+  }
+  else
+  {
+    printf("SSE: CR4.OSXMMEXCPT = 0\r\n");
+  }
+  if(cr4 & (1 << 18))
+  {
+    printf("SSE/AVX: CR4.OSXSAVE = 1\r\n");
+  }
+  else
+  {
+    printf("SSE/AVX: CR4.OSXSAVE = 0\r\n");
+  }
+  // Verify we're in long mode (UEFI by default should have put us there)
+  if((efer & 0x500) == 0x500)
+  {
+    printf("Long mode is enabled and active. (IA32e.LME = 1 & IA32e.LMA = 1)\r\n");
+  }
+  else
+  {
+    printf("For some reason long mode is not enabled and active.\r\n");
+  }
+  if(rflags & (1 << 9))
+  {
+    printf("Interrupts are enabled. (IF = 1)\r\n");
+  }
+  else
+  {
+    printf("Interrupts are disabled. (IF = 0)\r\n");
+  }
+
+  uint16_t gdt_index = cs >> 3; // This index is how many GDT_ENTRY_STRUCTs above GDT BaseAddress the current code segment is
+  // Check if 64-bit mode's all set to go.
+  DT_STRUCT gdt = get_gdtr(); // GDT is up to 64k from base addr, but CS points to max index in x86_64
+  printf("GDTR addr: %#qx, limit: %#hx\r\n", gdt.BaseAddress, gdt.Limit);
+
+  printf("CS GDT Entry: %#qx\r\n", ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index]);
+//  printf("CS GDT Entry: %#qx\r\n", *((GDT_ENTRY_STRUCT *)(gdt.BaseAddress + 8*gdt_index)) ); // Same thing
+
+  if( (((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 6)) == 0 ) // CS.D = 0 means "not in 32-bit mode" (either 16- or 64-bit mode)
+  {
+    if( ((GDT_ENTRY_STRUCT *)gdt.BaseAddress)[gdt_index].SegmentLimit2andMisc & (1 << 5) ) // CS.L = 1 means 64-bit mode if CS.D = 0.
+    {
+      printf("All good: 64-bit mode enabled. (CS.D = 0, CS.L = 1)\r\n");
+    }
+  }
+
+  if(rflags2 == rflags)
+  {
+    printf("CPUID is not supported.\r\n");
+  }
+  else
+  {
+    printf("CPUID is supported.\r\n");
+    printf("\r\n");
+    cpu_features(0, 0);
+    printf("\r\n");
+    cpu_features(1, 0);
+    printf("\r\n");
+    cpu_features(7, 0);
+    printf("\r\n");
+    cpu_features(0x80000000, 0);
+    printf("\r\n");
+    cpu_features(0x0D, 0);
+    printf("\r\n");
+    cpu_features(0x0D, 1);
+    printf("\r\n");
+    cpu_features(0x80000001, 0);
+    printf("\r\n");
+    cpu_features(0x80000006, 0);
+    printf("\r\n");
+    cpu_features(0x80000008, 0);
+    printf("\r\n");
+  }
+}
+
+char * Get_Brandstring(uint32_t * brandstring) // Must be a 48-byte array
+{
+  uint64_t rax_value = 0x80000000;
+  uint64_t rax, rbx, rcx, rdx = 0;
+
+  asm volatile("cpuid"
+               : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+               : "a" (rax_value) // The value to put into %rax
+               : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+            );
+  if(rax >= 0x80000004)
+  {
+    rax_value = 0x80000002;
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+              );
+
+    brandstring[0] = ((uint32_t *)&rax)[0];
+    brandstring[1] = ((uint32_t *)&rbx)[0];
+    brandstring[2] = ((uint32_t *)&rcx)[0];
+    brandstring[3] = ((uint32_t *)&rdx)[0];
+
+    rax_value = 0x80000003;
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+              );
+
+    brandstring[4] = ((uint32_t *)&rax)[0];
+    brandstring[5] = ((uint32_t *)&rbx)[0];
+    brandstring[6] = ((uint32_t *)&rcx)[0];
+    brandstring[7] = ((uint32_t *)&rdx)[0];
+
+    rax_value = 0x80000004;
+    asm volatile("cpuid"
+                 : "=a" (rax), "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+                 : "a" (rax_value) // The value to put into %rax
+                 : // CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+              );
+
+    brandstring[8] = ((uint32_t *)&rax)[0];
+    brandstring[9] = ((uint32_t *)&rbx)[0];
+    brandstring[10] = ((uint32_t *)&rcx)[0];
+    brandstring[11] = ((uint32_t *)&rdx)[0];
+
+     // Brandstrings are [supposed to be] null-terminated.
+
+    return (char*)brandstring;
+  }
+  else
+  {
+    printf("Brand string not supported\r\n");
+    return NULL;
+  }
+}
+
+char * Get_Manufacturer_ID(char * Manufacturer_ID) // Must be a 13-byte array
+{
+  uint64_t rbx, rcx, rdx;
+
+  asm volatile("cpuid"
+               : "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs
+               : "a" (0x00) // The value to put into %rax
+               : // CPUID would clobber any of the abcd registers not listed explicitly
+             );
+
+  Manufacturer_ID[0] = ((char *)&rbx)[0];
+  Manufacturer_ID[1] = ((char *)&rbx)[1];
+  Manufacturer_ID[2] = ((char *)&rbx)[2];
+  Manufacturer_ID[3] = ((char *)&rbx)[3];
+
+  Manufacturer_ID[4] = ((char *)&rdx)[0];
+  Manufacturer_ID[5] = ((char *)&rdx)[1];
+  Manufacturer_ID[6] = ((char *)&rdx)[2];
+  Manufacturer_ID[7] = ((char *)&rdx)[3];
+
+  Manufacturer_ID[8] = ((char *)&rcx)[0];
+  Manufacturer_ID[9] = ((char *)&rcx)[1];
+  Manufacturer_ID[10] = ((char *)&rcx)[2];
+  Manufacturer_ID[11] = ((char *)&rcx)[3];
+
+  Manufacturer_ID[12] = '\0';
+
+//  printf("%c%c%c%c%c%c%c%c%c%c%c%c\r\n",
+//  ((char *)&rbx)[0], ((char *)&rbx)[1], ((char *)&rbx)[2], ((char *)&rbx)[3],
+//  ((char *)&rdx)[0], ((char *)&rdx)[1], ((char *)&rdx)[2], ((char *)&rdx)[3],
+//  ((char *)&rcx)[0], ((char *)&rcx)[1], ((char *)&rcx)[2], ((char *)&rcx)[3]);
+
+  // GenuineIntel
+  // AuthenticAMD
+  return Manufacturer_ID;
 }
 
 uint64_t read_cs(void)
@@ -1439,12 +1672,15 @@ void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
   //  1 up to VerticalResolution - 1 = Scroll this many vertical lines at a time
   //                                   (NOTE: Gaps between text lines will occur
   //                                   if this is not an integer factor of the
-  //                                   space below the lowest character)
+  //                                   space below the lowest character, except
+  //                                   for special cases below)
   //  VerticalResolution = Maximum supported value, will simply wipe the screen.
   //
   //  Special cases:
   //    - Using height*scale gives a "quick scroll" for text, as it scrolls up an
-  //      entire character at once (recommended mode for scrolling).
+  //      entire character at once (recommended mode for scrolling). This special
+  //      case does not leave gaps between text lines when using arbitrary font
+  //      sizes/scales.
   //    - Using VerticalResolution will just quickly wipe the screen and print
   //      the next character on top where it would have gone next anyways.
   //

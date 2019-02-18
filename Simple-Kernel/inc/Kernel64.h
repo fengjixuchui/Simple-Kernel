@@ -385,6 +385,10 @@ typedef struct __attribute__ ((packed)) {
 // Initialization-related functions
 void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
+void Enable_AVX(void);
+void Print_All_CRs_and_Some_Major_CPU_Features(void);
+char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
+char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
 uint64_t get_tick(void);
 void enable_interrupts(void);
 uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
