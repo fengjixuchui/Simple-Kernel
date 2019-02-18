@@ -145,7 +145,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   // Technically, printf is immediately usable now. I'd recommend waitng for AVX/SSE init just in case the compiler uses them when optimizing printf.
 
 /* ENABLING AVX ASAP
-
+// TODO: AVX512 check
   // Checking CPUID means determining if bit 21 of R/EFLAGS can be toggled
   uint64_t rflags = control_register_rw('f', 0, 0);
 //  printf("RFLAGS: %#qx\r\n", rflags);
@@ -179,6 +179,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
         xcr0 = xcr_rw(0, 0, 0);
         if((xcr0 & 0x7) == 0x7)
         {
+          Colorscreen(GPU, Global_Print_Info.background_color); // We can use this AVX-optimized function now!
           printf("AVX enabled.\r\n");
         }
         else
@@ -248,6 +249,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
             xcr0 = xcr_rw(0, 0, 0);
             if((xcr0 & 0x7) == 0x7)
             {
+              Colorscreen(GPU, Global_Print_Info.background_color); // We can use this AVX-optimized function now!
               printf("AVX enabled.\r\n");
             }
             else
@@ -608,9 +610,10 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   Colorscreen(LP->GPU_Configs->GPUArray[0], 0x00FF0000); // Red in BGRX (X = reserved, technically an "empty alpha channel" for 32-bit memory alignment)
   printf("PRINTF!! 0x%qx", LP->GPU_Configs->GPUArray[0].FrameBufferBase);
   printf("Whup %s\r\nOh.\r\n", "Yo%%nk");
+
   Global_Print_Info.scale = 4; // Output scale for systemfont used by printf
-  Global_Print_Info.y = 0; // reset print to top left
-  Global_Print_Info.textscrollmode = 1; // Enable quick scrolling
+  Global_Print_Info.textscrollmode = Global_Print_Info.height*Global_Print_Info.scale; // Quick scrolling
+
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
@@ -619,24 +622,6 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/4, 2, "FORMATTED %s STRING!! %s", "Heyo!", "Heyz!");
   printf("This printf shouldn't move due to formatted string invocation.");
   single_char(LP->GPU_Configs->GPUArray[0], '2', 8, 8, 0x00FFFFFF, 0xFF000000);
-
-/*  // This works.
-  int k = _mm256_movemask_epi8(_mm256_set1_epi64x(0x00000000FFFFFFFF));
-  if(k == 0x0F0F0F0F)
-  {
-    printf("\nQQQQ\r\n");
-  }
-
-  */
-// This is causing GCC to emit a rogue vmovdqa for some reason, which causes a crash since you can't use an aligned instruction on unaligned data.
-//  memset_256bit_u((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, _mm256_setzero_si256(), 1024*767*4 >> 5);
-
-  //This works, but -mavx2 makes it VEX encoded.
-//  memset_128bit_u((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, _mm_set1_epi32(0x00FFFFFF), 1024*767*4 >> 4);
-  // This works:
-//   memset_32bit((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, 0x00FFFFFF, 1024*767); // The framebuffer will crash if it's not written to with 32-bit uints.
-//   memset_32bit((UINT32 *)LP->GPU_Configs->GPUArray[0].FrameBufferBase, 0x00FFFFFF, 1024*767*4 >> 2);
-  // Writing to the reserved bits causes a crash.
 
   // ASM so that GCC doesn't mess with this loop. This is about as optimized this can get.
   asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow
@@ -1438,9 +1423,9 @@ void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
 {
   // Set global default print information--needed for printf
   Global_Print_Info.defaultGPU = GPU;
-  Global_Print_Info.height = 8; // Character font height
-  Global_Print_Info.width = 8; // Character font width (in bits)
-  Global_Print_Info.font_color = 0x00FFFFFF; // Default font color
+  Global_Print_Info.height = 8; // Character font height (height*scale should not exceed VerticalResolution--it should still work, but it might be really messy and bizarrely cut off)
+  Global_Print_Info.width = 8; // Character font width (in bits) (width*scale should not exceed HorizontalResolution, same reason as above)
+  Global_Print_Info.font_color = 0x00FFFFFF; // Default font color -- TODO: Use EFI Pixel Info
   Global_Print_Info.highlight_color = 0x00000000; // Default highlight color
   Global_Print_Info.background_color = 0x00000000; // Default background color
   Global_Print_Info.x = 0; // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
@@ -1448,11 +1433,27 @@ void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
   Global_Print_Info.scale = 1; // Output scale for systemfont used by printf (positive integer scaling only, default 1 = no scaling)
   Global_Print_Info.index = 0; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
   Global_Print_Info.textscrollmode = 0; // What to do when a newline goes off the bottom of the screen. See next comment for values.
+  //
   // textscrollmode:
-  //  0 = wrap around to the top
-  //  1 = scroll entire screen by one line of text
-  //  2 = smooth scroll (WARNING: the higher the screen resolution and the larger the font size + scaling combination, the slower this is.)
-  Colorscreen(GPU, Global_Print_Info.background_color);
+  //  0 = wrap around to the top (default)
+  //  1 up to VerticalResolution - 1 = Scroll this many vertical lines at a time
+  //                                   (NOTE: Gaps between text lines will occur
+  //                                   if this is not an integer factor of the
+  //                                   space below the lowest character)
+  //  VerticalResolution = Maximum supported value, will simply wipe the screen.
+  //
+  //  Special cases:
+  //    - Using height*scale gives a "quick scroll" for text, as it scrolls up an
+  //      entire character at once (recommended mode for scrolling).
+  //    - Using VerticalResolution will just quickly wipe the screen and print
+  //      the next character on top where it would have gone next anyways.
+  //
+  // SMOOTH TEXT SCROLLING WARNING:
+  // The higher the screen resolution and the larger the font size + scaling, the
+  // slower low values are. Using 1 on a 4K screen takes almost exactly 30
+  // seconds to scroll up a 120-height character on an i7-7700HQ, but man it's
+  // smooooooth. Using 2 takes half the time, etc.
+  //
 }
 
 void Resetdefaultscreen(void)
@@ -1479,8 +1480,20 @@ void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
 void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color)
 {
   Global_Print_Info.background_color = color;
+
+  AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)GPU.FrameBufferBase, color, GPU.Info->VerticalResolution * GPU.Info->PixelsPerScanLine);
+/*  // This could work, too, if writing to the offscreen area is undesired. It'll probably be a little slower than a contiguous AVX_memset_4B, however.
+  for (row = 0; row < GPU.Info->VerticalResolution; row++)
+  {
+    // Per UEFI Spec 2.7 Errata A, framebuffer address 0 coincides with the top leftmost pixel. i.e. screen padding is only HorizontalResolution + porch.
+    AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(GPU.FrameBufferBase + 4 * GPU.Info->PixelsPerScanLine * row), color, GPU.Info->HorizontalResolution); // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
+  }
+*/
+
+/* // Old version
   UINT32 row, col;
   UINT32 backporch = GPU.Info->PixelsPerScanLine - GPU.Info->HorizontalResolution; // The area offscreen is the back porch. Sometimes it's 0.
+
   for (row = 0; row < GPU.Info->VerticalResolution; row++)
   {
     for (col = 0; col < (GPU.Info->PixelsPerScanLine - backporch); col++) // Per UEFI Spec 2.7 Errata A, framebuffer address 0 coincides with the top leftmost pixel. i.e. screen padding is only HorizontalResolution + porch.
@@ -1488,8 +1501,10 @@ void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color)
       *(UINT32*)(GPU.FrameBufferBase + 4 * (GPU.Info->PixelsPerScanLine * row + col)) = color; // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
     }
   }
-// Leaving this here for posterity. The framebuffer size might be a fair bit larger than the visible area (possibly for scrolling support? Regardless, some are just the size of the native resolution).
-/*  for(UINTN i = 0; i < GPU.FrameBufferSize; i+=4) //32 bpp == 4 Bpp
+*/
+
+/* // Leaving this here for posterity. The framebuffer size might be a fair bit larger than the visible area (possibly for scrolling support? Regardless, some are just the size of the native resolution).
+  for(UINTN i = 0; i < GPU.FrameBufferSize; i+=4) //32 bpp == 4 Bpp
   {
     *(UINT32*)(GPU.FrameBufferBase + i) = color; // FrameBufferBase is a 64-bit address that points to UINT32s.
   }

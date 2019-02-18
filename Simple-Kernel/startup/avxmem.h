@@ -29,7 +29,7 @@
 
 // Size limit (in bytes) before switching to non-temporal/streaming loads & stores
 // Applies to: AVX_memmove, AVX_memset, and AVX_memcpy
-#define CACHESIZELIMIT 262144
+#define CACHESIZELIMIT 3*1024*1024 // 3 MB
 
 //-----------------------------------------------------------------------------
 // Main Functions:

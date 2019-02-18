@@ -959,6 +959,7 @@ void * memset_128bit_as(void *dest, const __m128i val, size_t len)
   {
     _mm_stream_si128(ptr++, val);
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -973,6 +974,7 @@ void * memset_128bit_32B_as(void *dest, const __m128i val, size_t len)
     _mm_stream_si128(ptr++, val); // 1
     _mm_stream_si128(ptr++, val); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -989,6 +991,7 @@ void * memset_128bit_64B_as(void *dest, const __m128i val, size_t len)
     _mm_stream_si128(ptr++, val); // 3
     _mm_stream_si128(ptr++, val); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1009,6 +1012,7 @@ void * memset_128bit_128B_as(void *dest, const __m128i val, size_t len)
     _mm_stream_si128(ptr++, val); // 7
     _mm_stream_si128(ptr++, val); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1037,6 +1041,7 @@ void * memset_128bit_256B_as(void *dest, const __m128i val, size_t len)
     _mm_stream_si128(ptr++, val); // 15
     _mm_stream_si128(ptr++, val); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1059,6 +1064,7 @@ void * memset_256bit_as(void *dest, const __m256i val, size_t len)
   {
     _mm256_stream_si256(ptr++, val);
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1073,6 +1079,7 @@ void * memset_256bit_64B_as(void *dest, const __m256i val, size_t len)
     _mm256_stream_si256(ptr++, val); // 1
     _mm256_stream_si256(ptr++, val); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1089,6 +1096,7 @@ void * memset_256bit_128B_as(void *dest, const __m256i val, size_t len)
     _mm256_stream_si256(ptr++, val); // 3
     _mm256_stream_si256(ptr++, val); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1109,6 +1117,7 @@ void * memset_256bit_256B_as(void *dest, const __m256i val, size_t len)
     _mm256_stream_si256(ptr++, val); // 7
     _mm256_stream_si256(ptr++, val); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1137,6 +1146,7 @@ void * memset_256bit_512B_as(void *dest, const __m256i val, size_t len)
     _mm256_stream_si256(ptr++, val); // 15
     _mm256_stream_si256(ptr++, val); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1157,6 +1167,7 @@ void * memset_512bit_as(void *dest, const __m512i val, size_t len)
   {
     _mm512_stream_si512(ptr++, val);
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1171,6 +1182,7 @@ void * memset_512bit_128B_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 1
     _mm512_stream_si512(ptr++, val); // 2
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1187,6 +1199,7 @@ void * memset_512bit_256B_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 3
     _mm512_stream_si512(ptr++, val); // 4
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1207,6 +1220,7 @@ void * memset_512bit_512B_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 7
     _mm512_stream_si512(ptr++, val); // 8
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1235,6 +1249,7 @@ void * memset_512bit_1kB_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 15
     _mm512_stream_si512(ptr++, val); // 16
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1279,6 +1294,7 @@ void * memset_512bit_2kB_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 31
     _mm512_stream_si512(ptr++, val); // 32
   }
+  _mm_sfence();
 
   return dest;
 }
@@ -1355,6 +1371,7 @@ void * memset_512bit_4kB_as(void *dest, const __m512i val, size_t len)
     _mm512_stream_si512(ptr++, val); // 31
     _mm512_stream_si512(ptr++, val); // 32
   }
+  _mm_sfence();
 
   return dest;
 }

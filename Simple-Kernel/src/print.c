@@ -556,27 +556,46 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 				{
 					arg->y = 0; // Wrap
 				}
-				else if(arg->textscrollmode == 1) // Quick Scroll
+				else if(arg->textscrollmode == arg->height*arg->scale) // Quick Scroll
 				{
+					// New way (topmost line will be partially scrolled up offscreen, but no color gap under the bottommost text line; VerticalResolution % (height * scale) == 0 fonts don't have to worry all text on screen is the same size)
+					uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+					arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
+
+					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * min_scroll_size), (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine*4);
+					if(arg->background_color != 0xFF000000)
+					{
+						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
+					/* // Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
+					// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
 					if(arg->background_color != 0xFF000000)
 					{
 						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 					}
+					*/
+				}
+				else if(arg->textscrollmode == arg->defaultGPU.Info->VerticalResolution) // Screen wipe
+				{
+					if(arg->background_color != 0xFF000000)
+					{
+						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, arg->background_color, arg->defaultGPU.Info->VerticalResolution * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
 				}
 				else // Smooth scroll
 				{
-					uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+					uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 					arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 					// This offset correction is needed in case a font size/scale combination is not an integer multiple of the vertical resolution.
-					// Even if it is, changing scales or arg->y could cause an offset.
+					// Even if it is, changing scales or arg->y could cause a variable offset and that needs to be accounted for.
 
-					for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
+					for(uint64_t smooth = 0; smooth < min_scroll_size; smooth += arg->textscrollmode) // Random: (smooth --> 0) is the same as ((smooth--) > 0); It may not be obvious that they're the same at first glance.
 					{
-						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->VerticalResolution - 1 - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
+						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->textscrollmode), (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
 						if(arg->background_color != 0xFF000000)
 						{
-							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->defaultGPU.Info->PixelsPerScanLine);
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->textscrollmode*arg->defaultGPU.Info->PixelsPerScanLine);
 						}
 					}
 				}
@@ -611,27 +630,46 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 					{
 						arg->y = 0; // Wrap
 					}
-					else if(arg->textscrollmode == 1) // Quick Scroll
+					else if(arg->textscrollmode == arg->height*arg->scale) // Quick Scroll
 					{
+						// New way (topmost line will be partially scrolled up offscreen, but no color gap under the bottommost text line; VerticalResolution % (height * scale) == 0 fonts don't have to worry all text on screen is the same size)
+						uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+						arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
+
+						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * min_scroll_size), (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine*4);
+						if(arg->background_color != 0xFF000000)
+						{
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
+						}
+						/* // Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
+						// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
 						if(arg->background_color != 0xFF000000)
 						{
 							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 						}
+						*/
+					}
+					else if(arg->textscrollmode == arg->defaultGPU.Info->VerticalResolution) // Screen wipe
+					{
+						if(arg->background_color != 0xFF000000)
+						{
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, arg->background_color, arg->defaultGPU.Info->VerticalResolution * arg->defaultGPU.Info->PixelsPerScanLine);
+						}
 					}
 					else // Smooth scroll
 					{
-						uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+						uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 						arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 						// This offset correction is needed in case a font size/scale combination is not an integer multiple of the vertical resolution.
-						// Even if it is, changing scales or arg->y could cause an offset.
+						// Even if it is, changing scales or arg->y could cause a variable offset and that needs to be accounted for.
 
-						for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
+						for(uint64_t smooth = 0; smooth < min_scroll_size; smooth += arg->textscrollmode) // Random: (smooth --> 0) is the same as ((smooth--) > 0); It may not be obvious that they're the same at first glance.
 						{
-							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->VerticalResolution - 1 - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
+							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->textscrollmode), (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
 							if(arg->background_color != 0xFF000000)
 							{
-								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->defaultGPU.Info->PixelsPerScanLine);
+								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->textscrollmode*arg->defaultGPU.Info->PixelsPerScanLine);
 							}
 						}
 					}
@@ -649,28 +687,46 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 				{
 					arg->y = 0; // Wrap
 				}
-				else if(arg->textscrollmode == 1) // Quick Scroll
+				else if(arg->textscrollmode == arg->height*arg->scale) // Quick Scroll
 				{
-					// Qualitative test results are in: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
+					// New way (topmost line will be partially scrolled up offscreen, but no color gap under the bottommost text line; VerticalResolution % (height * scale) == 0 fonts don't have to worry all text on screen is the same size)
+					uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+					arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
+
+					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * min_scroll_size), (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine*4);
+					if(arg->background_color != 0xFF000000)
+					{
+						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
+					/* // Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
+					// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
 					if(arg->background_color != 0xFF000000)
 					{
 						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 					}
+					*/
+				}
+				else if(arg->textscrollmode == arg->defaultGPU.Info->VerticalResolution) // Screen wipe
+				{
+					if(arg->background_color != 0xFF000000)
+					{
+						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, arg->background_color, arg->defaultGPU.Info->VerticalResolution * arg->defaultGPU.Info->PixelsPerScanLine);
+					}
 				}
 				else // Smooth scroll
 				{
-					uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+					uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 					arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 					// This offset correction is needed in case a font size/scale combination is not an integer multiple of the vertical resolution.
-					// Even if it is, changing scales or arg->y could cause an offset.
+					// Even if it is, changing scales or arg->y could cause a variable offset and that needs to be accounted for.
 
-					for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
+					for(uint64_t smooth = 0; smooth < min_scroll_size; smooth += arg->textscrollmode) // Random: (smooth --> 0) is the same as ((smooth--) > 0); It may not be obvious that they're the same at first glance.
 					{
-						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->VerticalResolution - 1 - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
+						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->textscrollmode), (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
 						if(arg->background_color != 0xFF000000)
 						{
-							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->defaultGPU.Info->PixelsPerScanLine);
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->textscrollmode*arg->defaultGPU.Info->PixelsPerScanLine);
 						}
 					}
 				}
@@ -698,27 +754,46 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 						{
 							arg->y = 0; // Wrap
 						}
-						else if(arg->textscrollmode == 1) // Quick Scroll
+						else if(arg->textscrollmode == arg->height*arg->scale) // Quick Scroll
 						{
+							// New way (topmost line will be partially scrolled up offscreen, but no color gap under the bottommost text line; VerticalResolution % (height * scale) == 0 fonts don't have to worry all text on screen is the same size)
+							uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+							arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
+
+							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * min_scroll_size), (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine*4);
+							if(arg->background_color != 0xFF000000)
+							{
+								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
+							}
+							/* // Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
+							// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
 							if(arg->background_color != 0xFF000000)
 							{
 								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 							}
+							*/
+						}
+						else if(arg->textscrollmode == arg->defaultGPU.Info->VerticalResolution) // Screen wipe
+						{
+							if(arg->background_color != 0xFF000000)
+							{
+								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, arg->background_color, arg->defaultGPU.Info->VerticalResolution * arg->defaultGPU.Info->PixelsPerScanLine);
+							}
 						}
 						else // Smooth scroll
 						{
-							uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+							uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 							arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 							// This offset correction is needed in case a font size/scale combination is not an integer multiple of the vertical resolution.
-							// Even if it is, changing scales or arg->y could cause an offset.
+							// Even if it is, changing scales or arg->y could cause a variable offset and that needs to be accounted for.
 
-							for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
+							for(uint64_t smooth = 0; smooth < min_scroll_size; smooth += arg->textscrollmode) // Random: (smooth --> 0) is the same as ((smooth--) > 0); It may not be obvious that they're the same at first glance.
 							{
-								AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->VerticalResolution - 1 - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
+								AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->textscrollmode), (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
 								if(arg->background_color != 0xFF000000)
 								{
-									AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->defaultGPU.Info->PixelsPerScanLine);
+									AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->textscrollmode*arg->defaultGPU.Info->PixelsPerScanLine);
 								}
 							}
 						}
@@ -746,27 +821,46 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 					{
 						arg->y = 0; // Wrap
 					}
-					else if(arg->textscrollmode == 1) // Quick Scroll
+					else if(arg->textscrollmode == arg->height*arg->scale) // Quick Scroll
 					{
+						// New way (topmost line will be partially scrolled up offscreen, but no color gap under the bottommost text line; VerticalResolution % (height * scale) == 0 fonts don't have to worry all text on screen is the same size)
+						uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+						arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
+
+						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * min_scroll_size), (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine*4);
+						if(arg->background_color != 0xFF000000)
+						{
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
+						}
+						/* // Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
+						// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
 						if(arg->background_color != 0xFF000000)
 						{
 							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->y * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - arg->y) * arg->defaultGPU.Info->PixelsPerScanLine);
 						}
+						*/
+					}
+					else if(arg->textscrollmode == arg->defaultGPU.Info->VerticalResolution) // Screen wipe
+					{
+						if(arg->background_color != 0xFF000000)
+						{
+							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, arg->background_color, arg->defaultGPU.Info->VerticalResolution * arg->defaultGPU.Info->PixelsPerScanLine);
+						}
 					}
 					else // Smooth scroll
 					{
-						uint64_t scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
+						uint64_t min_scroll_size = arg->y + 2*arg->height*arg->scale - arg->defaultGPU.Info->VerticalResolution;
 						arg->y = arg->defaultGPU.Info->VerticalResolution - arg->height * arg->scale;
 						// This offset correction is needed in case a font size/scale combination is not an integer multiple of the vertical resolution.
-						// Even if it is, changing scales or arg->y could cause an offset.
+						// Even if it is, changing scales or arg->y could cause a variable offset and that needs to be accounted for.
 
-						for(uint64_t smooth = 1; smooth <= scroll_size; smooth++) // Using (smooth --> 0); looks more fun, but it's not obvious they're the same at first glance.
+						for(uint64_t smooth = 0; smooth < min_scroll_size; smooth += arg->textscrollmode) // Random: (smooth --> 0) is the same as ((smooth--) > 0); It may not be obvious that they're the same at first glance.
 						{
-							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4), (arg->defaultGPU.Info->VerticalResolution - 1 - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
+							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->textscrollmode), (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4);
 							if(arg->background_color != 0xFF000000)
 							{
-								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->defaultGPU.Info->PixelsPerScanLine);
+								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - arg->textscrollmode - smooth) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, arg->textscrollmode*arg->defaultGPU.Info->PixelsPerScanLine);
 							}
 						}
 					}
