@@ -2,7 +2,7 @@
 //  Simple Kernel: Main Header
 //==================================================================================================================================
 //
-// Version 0.y
+// Version 0.z
 //
 // Author:
 //  KNNSpeed
@@ -34,6 +34,7 @@ In freestanding mode, the only available standard header files are: <float.h>,
 #include "EfiBind.h"
 #include "EfiTypes.h"
 #include "EfiError.h"
+
 #include "avxmem.h"
 
 // GRAPHICS
@@ -342,13 +343,13 @@ typedef struct {
   void                   *RSDP;
 } LOADER_PARAMS;
 
-//
-// Anything below this line (except the #endif at the very bottom) is safe to
+//------------------------------------------------------------------------------
+// Anything below this comment (except the #endif at the very bottom) is safe to
 // remove without breaking compatibility with the Simple UEFI Bootloader. Useful
-// if you wanted to make your own kernel from scratch.
-//
+// if you wanted to make your own kernel from total scratch.
+//------------------------------------------------------------------------------
 
-#define systemfont font8x8_basic // Must be set up in UTF-8
+#define SYSTEMFONT font8x8_basic // Must be set up in UTF-8
 
 typedef struct {
 	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;
@@ -378,29 +379,36 @@ typedef struct __attribute__ ((packed)) {
   UINT16 BaseAddress1; // Low bits
   UINT8  BaseAddress2; // Next bits
   UINT8  Misc1; // Bits 0-3: segment/gate Type, 4: S, 5-6: DPL, 7: P
-  UINT8  SegmentLimit2andMisc; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
+  UINT8  SegmentLimit2andMisc2; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
   UINT8  BaseAddress3; // Most significant bits
-} GDT_ENTRY_STRUCT; // This whole thing can fit in a 64-bit int. Printf %lx on SegmentLimit1 gives the whole thing.
+} GDT_ENTRY_STRUCT; // This whole struct can fit in a 64-bit int. Printf %lx could give the whole thing.
 
-// Initialization-related functions
-void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
-void cpu_features(uint64_t rax_value, uint64_t rcx_value);
-void Enable_AVX(void);
-void Print_All_CRs_and_Some_Major_CPU_Features(void);
-char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
-char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
+// Initialization-related functions (System.c)
+void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU);
+
 uint64_t get_tick(void);
-void enable_interrupts(void);
-uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
-uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
+void Enable_AVX(void);
+void Enable_Maskable_Interrupts(void); // Exceptions and Non-Maskable Interrupts are always enabled.
+void Enable_HWP(void);
+uint8_t Hypervisor_check(void);
+uint8_t read_perfs_initial(uint64_t * perfs);
+uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure);
 uint64_t msr_rw(uint64_t msr, uint64_t data, int rw);
-uint32_t mxcsr_rw(uint32_t data, int rw);
 uint32_t vmxcsr_rw(uint32_t data, int rw);
+uint32_t mxcsr_rw(uint32_t data, int rw);
+uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
 uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw);
 uint64_t read_cs(void);
 DT_STRUCT get_gdtr(void);
+uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
+char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
+char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
+void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
-// Drawing-related functions
+// NOTE: Not in System.c, this function is in Kernel64.c.
+void Print_All_CRs_and_Some_Major_CPU_Features(void);
+
+// Drawing-related functions (Display.c)
 void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
 void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color);
 
@@ -416,7 +424,9 @@ void bitmap_bitswap(const unsigned char * bitmap, UINT32 height, UINT32 width, u
 void bitmap_bitreverse(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output);
 void bitmap_bytemirror(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output);
 
-// Text-related functions
+// Text-related functions (Display.c)
+void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
+
 void single_char(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color);
 void single_char_anywhere(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y);
 void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale);
@@ -425,7 +435,7 @@ void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const char * 
 void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, const char * string, ...);
 void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index);
 
-// Printf-related functions
+// Printf-related functions (Print.c)
 int snprintf(char *str, size_t size, const char *format, ...);
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
 int vsnrprintf(char *str, size_t size, int radix, const char *format, va_list ap);

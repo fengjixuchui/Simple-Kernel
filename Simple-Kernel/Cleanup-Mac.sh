@@ -45,7 +45,7 @@ while read f; do
 done < $CurDir/c_files_mac.txt
 
 #
-# Move into startup/ folder
+# Move into startup folder
 #
 
 cd $CurDir/startup

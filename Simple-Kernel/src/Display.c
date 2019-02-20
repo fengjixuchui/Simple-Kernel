@@ -1,0 +1,463 @@
+//==================================================================================================================================
+//  Simple Kernel: Text and Graphics Display Output Functions
+//==================================================================================================================================
+//
+// Version 0.z
+//
+// Author:
+//  KNNSpeed
+//
+// Source Code:
+//  https://github.com/KNNSpeed/Simple-Kernel
+//
+// This file provides various functions for text and graphics output.
+//
+
+#include "Kernel64.h"
+#include "font8x8.h" // This can only be included by one file since it's h-files containing initialized variables (in this case arrays)
+
+void Initialize_Global_Printf_Defaults(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
+{
+  // Set global default print information--needed for printf
+  Global_Print_Info.defaultGPU = GPU;
+  Global_Print_Info.height = 8; // Character font height (height*scale should not exceed VerticalResolution--it should still work, but it might be really messy and bizarrely cut off)
+  Global_Print_Info.width = 8; // Character font width (in bits) (width*scale should not exceed HorizontalResolution, same reason as above)
+  Global_Print_Info.font_color = 0x00FFFFFF; // Default font color -- TODO: Use EFI Pixel Info
+  Global_Print_Info.highlight_color = 0x00000000; // Default highlight color
+  Global_Print_Info.background_color = 0x00000000; // Default background color
+  Global_Print_Info.x = 0; // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
+  Global_Print_Info.y = 0; // Topmost y-coord
+  Global_Print_Info.scale = 1; // Output scale for systemfont used by printf (positive integer scaling only, default 1 = no scaling)
+  Global_Print_Info.index = 0; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
+  Global_Print_Info.textscrollmode = 0; // What to do when a newline goes off the bottom of the screen. See next comment for values.
+  //
+  // textscrollmode:
+  //  0 = wrap around to the top (default)
+  //  1 up to VerticalResolution - 1 = Scroll this many vertical lines at a time
+  //                                   (NOTE: Gaps between text lines will occur
+  //                                   if this is not an integer factor of the
+  //                                   space below the lowest character, except
+  //                                   for special cases below)
+  //  VerticalResolution = Maximum supported value, will simply wipe the screen.
+  //
+  //  Special cases:
+  //    - Using height*scale gives a "quick scroll" for text, as it scrolls up an
+  //      entire character at once (recommended mode for scrolling). This special
+  //      case does not leave gaps between text lines when using arbitrary font
+  //      sizes/scales.
+  //    - Using VerticalResolution will just quickly wipe the screen and print
+  //      the next character on top where it would have gone next anyways.
+  //
+  // SMOOTH TEXT SCROLLING WARNING:
+  // The higher the screen resolution and the larger the font size + scaling, the
+  // slower low values are. Using 1 on a 4K screen takes almost exactly 30
+  // seconds to scroll up a 120-height character on an i7-7700HQ, but man it's
+  // smooooooth. Using 2 takes half the time, etc.
+  //
+}
+
+// A massively customizable printf-like function. Supports everything printf supports. Not bound to any particular GPU.
+// height and width: height (bytes) and width (bits) of the string's font characters, there is no automatic way of getting this information for weird font sizes (e.g. 17 bits wide), sorry.
+// font_color: font color
+// highlight_color: highlight/background color for the string's characters (it's called highlight color in word processors)
+// x and y: coordinate positions of the top leftmost pixel of the string
+// scale: font scale factor
+void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, const char * string, ...)
+{
+  // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
+  // x and y are top leftmost coordinates
+  // Height in number of bytes and width in number of bits, per character where "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+  else if(x > GPU.Info->HorizontalResolution || y > GPU.Info->VerticalResolution)
+  {
+    Colorscreen(GPU, 0x0000FF00); // Makes screen green
+  }
+  else if ((y + scale*height) > GPU.Info->VerticalResolution || (x + scale*width) > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x000000FF); // Makes screen blue
+  }
+  va_list arguments;
+
+  va_start(arguments, string);
+  ssize_t buffersize = vsnprintf(NULL, 0, string, arguments); // Get size of needed buffer
+  char output_string[buffersize + 1]; // (v)snprintf does not account for \0
+  vsprintf(output_string, string, arguments); // Write string to buffer
+  va_end(arguments);
+
+  string_anywhere_scaled(GPU, output_string, height, width, font_color, highlight_color, x, y, scale);
+}
+
+void Resetdefaultscreen(void)
+{
+  Global_Print_Info.y = 0;
+  Global_Print_Info.index = 0;
+  Blackscreen(Global_Print_Info.defaultGPU);
+}
+
+void Resetdefaultcolorscreen(void)
+{
+  Global_Print_Info.x = 0;
+  Global_Print_Info.y = 0;
+  Global_Print_Info.index = 0;
+  Colorscreen(Global_Print_Info.defaultGPU, Global_Print_Info.background_color);
+}
+
+void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU)
+{
+  Colorscreen(GPU, 0x00000000);
+}
+
+// This will only color the visible area
+void Colorscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 color)
+{
+  Global_Print_Info.background_color = color;
+
+  AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)GPU.FrameBufferBase, color, GPU.Info->VerticalResolution * GPU.Info->PixelsPerScanLine);
+/*  // This could work, too, if writing to the offscreen area is undesired. It'll probably be a little slower than a contiguous AVX_memset_4B, however.
+  for (row = 0; row < GPU.Info->VerticalResolution; row++)
+  {
+    // Per UEFI Spec 2.7 Errata A, framebuffer address 0 coincides with the top leftmost pixel. i.e. screen padding is only HorizontalResolution + porch.
+    AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(GPU.FrameBufferBase + 4 * GPU.Info->PixelsPerScanLine * row), color, GPU.Info->HorizontalResolution); // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
+  }
+*/
+
+/* // Old version (non-AVX)
+  UINT32 row, col;
+  UINT32 backporch = GPU.Info->PixelsPerScanLine - GPU.Info->HorizontalResolution; // The area offscreen is the back porch. Sometimes it's 0.
+
+  for (row = 0; row < GPU.Info->VerticalResolution; row++)
+  {
+    for (col = 0; col < (GPU.Info->PixelsPerScanLine - backporch); col++) // Per UEFI Spec 2.7 Errata A, framebuffer address 0 coincides with the top leftmost pixel. i.e. screen padding is only HorizontalResolution + porch.
+    {
+      *(UINT32*)(GPU.FrameBufferBase + 4 * (GPU.Info->PixelsPerScanLine * row + col)) = color; // The thing at FrameBufferBase is an address pointing to UINT32s. FrameBufferBase itself is a 64-bit number.
+    }
+  }
+*/
+
+/* // Leaving this here for posterity. The framebuffer size might be a fair bit larger than the visible area (possibly for scrolling support? Regardless, some are just the size of the native resolution).
+  for(UINTN i = 0; i < GPU.FrameBufferSize; i+=4) //32 bpp == 4 Bpp
+  {
+    *(UINT32*)(GPU.FrameBufferBase + i) = color; // FrameBufferBase is a 64-bit address that points to UINT32s.
+  }
+*/
+}
+
+// Screen turns red if a pixel is put outside the visible area.
+void single_pixel(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 x, UINT32 y, UINT32 color)
+{
+  if(y > GPU.Info->VerticalResolution || x > GPU.Info->HorizontalResolution) // Need some kind of error indicator (makes screen red)
+  {
+    Colorscreen(GPU, 0x00FF0000);
+  }
+
+  *(UINT32*)(GPU.FrameBufferBase + (y * GPU.Info->PixelsPerScanLine + x) * 4) = color;
+//  Output_render(GPU, 0x01, 1, 1, color, 0xFF000000, x, y, 1, 0); // Make highlight transparent to skip that part of output render (transparent = no highlight)
+}
+
+void single_char(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color)
+{
+  // Height in number of bytes and width in number of bits
+  // Assuming "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+
+  Output_render_text(GPU, character, height, width, font_color, highlight_color, 0, 0, 1, 0);
+}
+
+void single_char_anywhere(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y)
+{
+  // x and y are top leftmost coordinates
+  // Height in number of bytes and width in number of bits
+  // Assuming "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+  else if(x > GPU.Info->HorizontalResolution || y > GPU.Info->VerticalResolution)
+  {
+    Colorscreen(GPU, 0x0000FF00); // Makes screen green
+  }
+  else if ((y + height) > GPU.Info->VerticalResolution || (x + width) > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x000000FF); // Makes screen blue
+  }
+
+  Output_render_text(GPU, character, height, width, font_color, highlight_color, x, y, 1, 0);
+}
+
+// Arbitrarily-sized fonts should work, too.
+void single_char_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
+{
+  // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
+  // x and y are top leftmost coordinates
+  // Height in number of bytes and width in number of bits
+  // Assuming "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+  else if(x > GPU.Info->HorizontalResolution || y > GPU.Info->VerticalResolution)
+  {
+    Colorscreen(GPU, 0x0000FF00); // Makes screen green
+  }
+  else if ((y + scale*height) > GPU.Info->VerticalResolution || (x + scale*width) > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x000000FF); // Makes screen blue
+  }
+
+  Output_render_text(GPU, character, height, width, font_color, highlight_color, x, y, scale, 0);
+}
+
+// Version for images. Just pass in an appropriately-formatted array of bytes as the 'character' pointer.
+void bitmap_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
+{
+  // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
+  // x and y are top leftmost coordinates
+  // Height in number of bytes and width in number of bits
+  // Assuming "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+  else if(x > GPU.Info->HorizontalResolution || y > GPU.Info->VerticalResolution)
+  {
+    Colorscreen(GPU, 0x0000FF00); // Makes screen green
+  }
+  else if ((y + scale*height) > GPU.Info->VerticalResolution || (x + scale*width) > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x000000FF); // Makes screen blue
+  }
+
+  Output_render_bitmap(GPU, bitmap, height, width, font_color, highlight_color, x, y, scale, 0);
+}
+
+// literal strings in C are automatically null-terminated. i.e. "hi" is actually 3 characters long.
+// This function allows direct output of a pre-made string, either a hardcoded one or one made via sprintf.
+void string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const char * string, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale)
+{
+  // scale is an integer scale factor, e.g. 2 for 2x, 3 for 3x, etc.
+  // x and y are top leftmost coordinates
+  // Height in number of bytes and width in number of bits, per character
+  // Assuming "character" is an array of bytes, e.g. { 0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00}, which is U+0040 (@). This is an 8x8 '@' sign.
+  if(height > GPU.Info->VerticalResolution || width > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x00FF0000); // Need some kind of error indicator (makes screen red)
+  } // Could use an instruction like ARM's USAT to truncate values
+  else if(x > GPU.Info->HorizontalResolution || y > GPU.Info->VerticalResolution)
+  {
+    Colorscreen(GPU, 0x0000FF00); // Makes screen green
+  }
+  else if ((y + scale*height) > GPU.Info->VerticalResolution || (x + scale*width) > GPU.Info->HorizontalResolution)
+  {
+    Colorscreen(GPU, 0x000000FF); // Makes screen blue
+  }
+
+  //mapping: x*4 + y*4*(PixelsPerScanLine), x is column number, y is row number; every 4*PixelsPerScanLine bytes is a new row
+  // y max is VerticalResolution, x max is HorizontalResolution, 'x4' is the LFB expansion, since 1 bit input maps to 4 bytes output
+
+  // A 2x scale should turn 1 pixel into a square of 2x2 pixels
+// iterate through characters in string
+// start while
+  uint32_t index = 0;
+  while(string[index] != '\0') // for char in string until \0
+  {
+    // match the character to the font, using UTF-8.
+    // This would expect a font array to include everything in the UTF-8 character set... Or just use the most common ones.
+    Output_render_text(GPU, string[index], height, width, font_color, highlight_color, x, y, scale, index);
+    index++;
+  } // end while
+} // end function
+
+void Output_render_text(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, int character, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index)
+{
+  // Compact ceiling function, so that size doesn't need to be passed in
+  // This should be faster than a divide followed by a mod
+  uint32_t row_iterator = width >> 3;
+  if((width & 0x7) != 0)
+  {
+    row_iterator++;
+  } // Width should never be zero, so the iterator will always be at least 1
+  uint32_t i;
+
+  for(uint32_t row = 0; row < height; row++) // for number of rows in the character of the fontarray
+  {
+    i = 0;
+    for (uint32_t bit = 0; bit < width; bit++) // for bit in column
+    {
+      if(((bit & 0x7) == 0 ) && (bit > 0))
+      {
+        i++;
+      }
+      // if a 1, output NOTE: There's gotta be a better way to do this.
+//      if( character[row*row_iterator + i] & (1 << (7 - (bit & 0x7))) )
+      if((SYSTEMFONT[character][row*row_iterator + i] >> (bit & 0x7)) & 0x1)
+      {
+        // start scale here
+        for(uint32_t b = 0; b < scale; b++)
+        {
+          for(uint32_t a = 0; a < scale; a++)
+          {
+            *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
+          }
+        } //end scale here
+      } //end if
+      else // if a 0, background or skip (set highlight_color to 0xFF000000 for transparency)
+      {
+        // start scale here
+        for(uint32_t b = 0; b < scale; b++)
+        {
+          for(uint32_t a = 0; a < scale; a++)
+          {
+            if(highlight_color != 0xFF000000) // Transparency "color"
+            {
+              *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = highlight_color;
+            }
+          }
+        } //end scale here
+      } // end else
+    } // end bit in column
+  } // end byte in row
+}
+
+void Output_render_bitmap(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, const unsigned char * bitmap, UINT32 height, UINT32 width, UINT32 font_color, UINT32 highlight_color, UINT32 x, UINT32 y, UINT32 scale, UINT32 index)
+{
+  // Compact ceiling function, so that size doesn't need to be passed in
+  // This should be faster than a divide followed by a mod
+  uint32_t row_iterator = width >> 3;
+  if((width & 0x7) != 0)
+  {
+    row_iterator++;
+  } // Width should never be zero, so the iterator will always be at least 1
+  uint32_t i;
+
+  for(uint32_t row = 0; row < height; row++) // for number of rows in the character of the fontarray
+  {
+    i = 0;
+    for (uint32_t bit = 0; bit < width; bit++) // for bit in column
+    {
+      if(((bit & 0x7) == 0 ) && (bit > 0))
+      {
+        i++;
+      }
+      // if a 1, output NOTE: There's gotta be a better way to do this.
+//      if( character[row*row_iterator + i] & (1 << (7 - (bit & 0x7))) )
+      if((bitmap[row*row_iterator + i] >> (bit & 0x7)) & 0x1) // This is pretty much the only difference from Output_render_text
+      {
+        // start scale here
+        for(uint32_t b = 0; b < scale; b++)
+        {
+          for(uint32_t a = 0; a < scale; a++)
+          {
+            *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = font_color;
+          }
+        } //end scale here
+      } //end if
+      else // if a 0, background or skip (set highlight_color to 0xFF000000 for transparency)
+      {
+        // start scale here
+        for(uint32_t b = 0; b < scale; b++)
+        {
+          for(uint32_t a = 0; a < scale; a++)
+          {
+            if(highlight_color != 0xFF000000) // Transparency "color"
+            {
+              *(UINT32*)(GPU.FrameBufferBase + ((y*GPU.Info->PixelsPerScanLine + x) + scale*(row*GPU.Info->PixelsPerScanLine + bit) + (b*GPU.Info->PixelsPerScanLine + a) + scale * index * width)*4) = highlight_color;
+            }
+          }
+        } //end scale here
+      } // end else
+    } // end bit in column
+  } // end byte in row
+}
+
+// TODO: Finish/optimize bitmap renderers first.
+// Maybe combine output renders into one with a 't' 'b' or 'v' mode.
+// This could use AVX
+/*
+void Output_render_vector(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UINT32 x_init, UINT32 y_init, UINT32 x_final, UINT32 y_final, UINT32 color, UINT32 scale)
+{
+
+}
+*/
+
+// Swaps the high 4 bits with the low 4 bits in each byte of an array
+void bitmap_bitswap(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output)
+{
+  uint32_t row_iterator = width >> 3;
+  if((width & 0x7) != 0)
+  {
+    row_iterator++;
+  } // Width should never be zero, so the iterator will always be at least 1
+
+  for(uint32_t iter = 0; iter < height*row_iterator; iter++) // Flip one byte at a time
+  {
+    output[iter] = (((bitmap[iter] >> 4) & 0xF) | ((bitmap[iter] & 0xF) << 4));
+  }
+}
+
+// Will invert each individual byte in an array: 12345678 --> 87654321
+void bitmap_bitreverse(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output)
+{
+  uint32_t row_iterator = width >> 3;
+  if((width & 0x7) != 0)
+  {
+    row_iterator++;
+  } // Width should never be zero, so the iterator will always be at least 1
+
+  for(uint32_t iter = 0; iter < height*row_iterator; iter++) // Invert one byte at a time
+  {
+    output[iter] = 0;
+    for(uint32_t bit = 0; bit < 8; bit++)
+    {
+      if( bitmap[iter] & (1 << (7 - bit)) )
+      {
+        output[iter] += (1 << bit);
+      }
+    }
+  }
+}
+
+// Requires rectangular arrays, and will create a horizontal reflection of entire array (like looking in a mirror)
+void bitmap_bytemirror(const unsigned char * bitmap, UINT32 height, UINT32 width, unsigned char * output) // Width in bits, height in bytes
+{
+  uint32_t row_iterator = width >> 3;
+  if((width & 0x7) != 0)
+  {
+    row_iterator++;
+  } // Width should never be zero, so the iterator will always be at least 1
+
+  uint32_t iter, parallel_iter;
+  if(row_iterator & 0x01)
+  {// Odd number of bytes per row
+    for(iter = 0, parallel_iter = row_iterator - 1; (iter + (row_iterator >> 1) + 1) < height*row_iterator; iter++, parallel_iter--) // Mirror one byte at a time
+    {
+      if(iter == parallel_iter) // Integer divide, (iter%row_iterator == row_iterator/2 - 1)
+      {
+        iter += (row_iterator >> 1) + 1; // Hop the middle byte
+        parallel_iter = iter + row_iterator - 1;
+      }
+
+      output[iter] = bitmap[parallel_iter]; // parallel_iter must mirror iter
+      output[parallel_iter] = bitmap[iter];
+    }
+  }
+  else
+  {// Even number of bytes per row
+    for(iter = 0, parallel_iter = row_iterator - 1; (iter + (row_iterator >> 1)) < height*row_iterator; iter++, parallel_iter--) // Mirror one byte at a time
+    {
+      if(iter - 1 == parallel_iter) // Integer divide, (iter%row_iterator == row_iterator/2 - 1)
+      {
+        iter += (row_iterator >> 1); // Skip to the next row to swap
+        parallel_iter = iter + row_iterator - 1; // Appropriately position parallel_iter based on iter
+      }
+
+      output[iter] = bitmap[parallel_iter]; // Parallel_iter must mirror iter
+      output[parallel_iter] = bitmap[iter];
+    }
+  }
+}
