@@ -1,15 +1,15 @@
 ## Simple-Kernel
 A minimal, cross-platform development environment for building bare-metal x86-64 programs. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader.
 
-**Version 0.y**
+**Version 0.z**
 
-This build system compiles native executables for the builder's platform (Windows, Mac, or Linux) that can be loaded by the bootloader. A sample kernel containing a software renderer, text output, and multi-GPU graphical support is also included in this repository.
+This build system compiles operating system kernels into native executables for the builder's platform (Windows, Mac, or Linux) that can then be loaded by the bootloader. A kernel framework, containing a software renderer, flexible text output, multi-GPU graphical support, and a whole host of low-level system control functions, is included.
 
-See "Issues" for my to-do list for the included sample kernel, and see the "Releases" tab of this project for executable binary forms of it.  
+See "Issues" for my to-do list before hitting "official release-ready" version 1.0, and see the "Releases" tab of this project for executable demos.  
   
 *Apologies to AMD Ryzen users: I can't test Ryzen binaries as I don't have any Ryzen machines. The build scripts are provided with the caveat that they ought to produce usable binaries (I don't see why they wouldn't).*
 
-**Building a Program**
+**Building an OS Kernel/Bare-Metal x86-64 Application**
 
 See the below "How to Build from Source" section for complete compilation instructions for each platform, and then all you need to do is put your code in "src" and "inc" in place of mine (leave the "startup" folder as-is). Once compiled, your program can be run in the same way as described in the "Releases" section of https://github.com/KNNSpeed/Simple-UEFI-Bootloader using a UEFI-supporting VM like Hyper-V or on actual hardware.
 
@@ -50,9 +50,9 @@ You will also need to `#include` the "Efi" files from "startup" in your code: re
 
 **Target System Requirements**  
 
-*These are the same as the bootloader's requirements. If your target system can run the bootloader, you're all set.*  
+*These are the nearly same as the bootloader's requirements. If your target system can run the bootloader, and you have AVX, you're all set.*  
 
-- x86-64 architecture  
+- x86-64 architecture with AVX (most Intel ix-2xxx or newer, AMD Ryzen or newer, see [the Wikipedia page on AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#CPUs_with_AVX))
 - Secure Boot must be disabled  
 - More than 4GB RAM (though it seems to work OK with less, e.g. Hyper-V with only 1GB)  
 - A graphics card (Intel, AMD, NVidia, etc.) **with UEFI GOP support**  
@@ -74,7 +74,7 @@ Please see the LICENSE file for further information on all licenses covering cod
 
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
-V0.y, [Date you got it]  
+V0.z, [Date you got it]  
 
 ***Slightly More Detailed License Summary:***
 
@@ -82,7 +82,7 @@ If you want to use, copy, modify, and/or distribute this project's original sour
 
 From KNNSpeed's "Simple Kernel":  
 https://github.com/KNNSpeed/Simple-Kernel  
-V0.y, [Date you got it]  
+V0.z, [Date you got it]  
 
 (As mentioned in the TL;DR, please see the LICENSE file for further information on all licenses covering code created for and used in this project.)  
 
@@ -155,6 +155,8 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
     For more information about building GCC and Binutils, see these: http://www.linuxfromscratch.org/blfs/view/cvs/general/gcc.html & http://www.linuxfromscratch.org/lfs/view/development/chapter06/binutils.html  
 
 **Change Log**  
+
+V0.z (2/20/2019) - Major update: AVX is now required, separated code out code files, added a TON of low-level system control functions (port I/O, control register manipulation, HWP support for systems supporting it, cpu feature checks), added CPU frequency measurement (average since boot and for specific user-defined code segments), updated text printing to include wraparound, smooth scrolling, and quick-scrolling, and prettied up code styling. Also, spun-off a new project from this one: https://github.com/KNNSpeed/AVX-Memmove
 
 V0.y (2/1/2019) - Major code cleanup, added printf() and a whole host of text-displaying functions, resolved issues #5 and #6. No new binaries will be made for this version.
 
