@@ -156,7 +156,7 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
 
 **Change Log**  
 
-V0.z (2/20/2019) - Major update: AVX is now required, separated code out code files, added a TON of low-level system control functions (port I/O, control register manipulation, HWP support for systems supporting it, cpu feature checks), added CPU frequency measurement (average since boot and for specific user-defined code segments), updated text printing to include wraparound, smooth scrolling, and quick-scrolling, and prettied up code styling. Also, spun-off a new project from this one: https://github.com/KNNSpeed/AVX-Memmove
+V0.z (2/20/2019) - Major update: AVX is now required, separated code out of code files, added a TON of low-level system control functions (port I/O, control register manipulation, HWP support for systems supporting it, cpu feature checks), added CPU frequency measurement (average since boot and for specific user-defined code segments), updated text printing to include wraparound, smooth scrolling, and quick-scrolling, and prettied up code styling. Also, spun-off a new project from this one: https://github.com/KNNSpeed/AVX-Memmove
 
 V0.y (2/1/2019) - Major code cleanup, added printf() and a whole host of text-displaying functions, resolved issues #5 and #6. No new binaries will be made for this version.
 
