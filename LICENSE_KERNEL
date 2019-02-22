@@ -22,7 +22,7 @@ The included font headers, as well as "memmove.c," "memcmp.c," "memcpy.c," and
 All remaining source not covered by a license is released under the following
 license (note the copyright is non-exclusive):
 
-Copyright (c) 2017-2018 KNNSpeed
+Copyright (c) 2017-2019 KNNSpeed
 
 This software is provided free of charge in hopes that it may be useful, and it
 can be downloaded and used in whole or in part. However, by using, copying,
@@ -41,19 +41,19 @@ just examples: the important point is that the exact original source is
 identified and attributed.
 
 Short:
-// From V0.x of https://github.com/KNNSpeed/Simple-Kernel
+// From V0.z of https://github.com/KNNSpeed/Simple-Kernel
 
 Medium:
-// From KNNSpeed's "Simple Kernel," V0.x:
+// From KNNSpeed's "Simple Kernel," V0.z:
 // https://github.com/KNNSpeed/Simple-Kernel
 
 Long (Recommended):
 // From KNNSpeed's "Simple Kernel":
 // https://github.com/KNNSpeed/Simple-Kernel
-// V0.x, [Date you got it]
+// V0.z, [Date you got it]
 
 The last line of the long form might look like:
-V0.x, January 8, 2018
+V0.z, January 8, 2018
 
 2) THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

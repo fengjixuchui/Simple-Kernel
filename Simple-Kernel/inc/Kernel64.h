@@ -17,11 +17,10 @@
 #ifndef _Kernel64_H
 #define _Kernel64_H
 
-/*
-In freestanding mode, the only available standard header files are: <float.h>,
-<iso646.h>, <limits.h>, <stdarg.h>, <stdbool.h>, <stddef.h>, and <stdint.h>
-(C99 standard 4.6).
-*/
+
+// In freestanding mode, the only available standard header files are: <float.h>,
+// <iso646.h>, <limits.h>, <stdarg.h>, <stdbool.h>, <stddef.h>, and <stdint.h>
+// (C99 standard 4.6).
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -29,7 +28,14 @@ In freestanding mode, the only available standard header files are: <float.h>,
 #include <float.h>
 #include <stdarg.h>
 
-//#include <cpuid.h> // ...But we have this, too. Don't need it, though.
+//#include <cpuid.h> // ...We also have this. Don't need it, though.
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  UEFI and Bootloader Functions, Definitions, and Declarations
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Functions, definitions, and declarations necessary for using UEFI functions and services passed in by the bootloader
+//
 
 #include "EfiBind.h"
 #include "EfiTypes.h"
@@ -177,15 +183,17 @@ EFI_STATUS
 // EFI Memory
 //
 
+// Looking for something that's not here? Try EfiTypes.h.
+
 #define NextMemoryDescriptor(Ptr,Size)  ((EFI_MEMORY_DESCRIPTOR *) (((UINT8 *) Ptr) + Size))
 
 typedef
 EFI_STATUS
-(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (
-    IN UINTN                        MemoryMapSize,
-    IN UINTN                        DescriptorSize,
-    IN UINT32                       DescriptorVersion,
-    IN EFI_MEMORY_DESCRIPTOR        *VirtualMap
+(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these immediately when kernel starts:
+    IN UINTN                        MemoryMapSize,     // LP->Memory_Map_Size
+    IN UINTN                        DescriptorSize,    // LP->Memory_Map_Descriptor_Size
+    IN UINT32                       DescriptorVersion, // EFI_MEMORY_DESCRIPTOR_VERSION
+    IN EFI_MEMORY_DESCRIPTOR        *VirtualMap        // LP->Memory_Map
     );
 
 
@@ -323,7 +331,7 @@ typedef struct {
 
 
 typedef struct {
-  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
   UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
 } GPU_CONFIG;
 
@@ -336,12 +344,16 @@ typedef struct {
 // GTX1080.Info->HorizontalResolution
 
 typedef struct {
-  EFI_MEMORY_DESCRIPTOR  *Memory_Map;
-  EFI_RUNTIME_SERVICES   *RTServices;
-  GPU_CONFIG             *GPU_Configs;
-  EFI_FILE_INFO          *FileMeta;
-  void                   *RSDP;
+  UINTN                   Memory_Map_Size;            // The total size of the system memory map
+  UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
+  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+  EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
+  GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
+  EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
+  void                   *RSDP;                       // A pointer to the RSDP ACPI table
 } LOADER_PARAMS;
+
+// END UEFI and Bootloader functions, definitions, and declarations
 
 //------------------------------------------------------------------------------
 // Anything below this comment (except the #endif at the very bottom) is safe to
@@ -349,7 +361,12 @@ typedef struct {
 // if you wanted to make your own kernel from total scratch.
 //------------------------------------------------------------------------------
 
-#define SYSTEMFONT font8x8_basic // Must be set up in UTF-8
+//----------------------------------------------------------------------------------------------------------------------------------
+//  Function Support Definitions
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Support structure definitions and declarations
+//
 
 typedef struct {
 	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;
@@ -383,6 +400,23 @@ typedef struct __attribute__ ((packed)) {
   UINT8  BaseAddress3; // Most significant bits
 } GDT_ENTRY_STRUCT; // This whole struct can fit in a 64-bit int. Printf %lx could give the whole thing.
 
+// Intel Architecture Manual Vol. 3A, Fig. 6-8
+// Note the order of this frame with respect to the stack.
+typedef struct __attribute__ ((packed)) {
+  UINT64 rip;
+  UINT64 cs;
+  UINT64 rflags;
+  UINT64 rsp;
+  UINT64 ss;
+} INTERRUPT_FRAME;
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  Function Prototypes
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// All functions defined by files in the "src" folder
+//
+
 // Initialization-related functions (System.c)
 void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU);
 
@@ -397,9 +431,10 @@ uint64_t msr_rw(uint64_t msr, uint64_t data, int rw);
 uint32_t vmxcsr_rw(uint32_t data, int rw);
 uint32_t mxcsr_rw(uint32_t data, int rw);
 uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
-uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw);
+uint64_t xcr_rw(uint64_t xcrX, uint64_t data, int rw);
 uint64_t read_cs(void);
 DT_STRUCT get_gdtr(void);
+DT_STRUCT get_idtr(void);
 uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
 char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
 char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
@@ -407,6 +442,12 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
 // NOTE: Not in System.c, this function is in Kernel64.c.
 void Print_All_CRs_and_Some_Major_CPU_Features(void);
+
+// Memory-related functions (Memory.c)
+uint8_t VerifyZeroMem(uint64_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-bit unsigned int whose value is the memory address to verify
+EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(uint64_t pages, EFI_PHYSICAL_ADDRESS OldAddress, EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
+EFI_PHYSICAL_ADDRESS ActuallyFreeAddressByPage(UINT64 pages, EFI_PHYSICAL_ADDRESS OldAddress, EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
+void print_kernel_memmap(EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
 
 // Drawing-related functions (Display.c)
 void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);

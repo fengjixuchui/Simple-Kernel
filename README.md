@@ -1,17 +1,54 @@
-## Simple-Kernel
-A minimal, cross-platform development environment for building bare-metal x86-64 programs. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader.
+# Simple Kernel
+A minimal, cross-platform development environment for building bare-metal x86-64 programs, kernels, and/or full operating systems on UEFI 2.x systems. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader.
 
-**Version 0.z**
+**Version 0.z (not considered "release-ready" until 1.0)**
 
 This build system compiles operating system kernels into native executables for the builder's platform (Windows, Mac, or Linux) that can then be loaded by the bootloader. A kernel framework, containing a software renderer, flexible text output, multi-GPU graphical support, and a whole host of low-level system control functions, is included.
 
-See "Issues" for my to-do list before hitting "official release-ready" version 1.0, and see the "Releases" tab of this project for executable demos.  
-  
-*Apologies to AMD Ryzen users: I can't test Ryzen binaries as I don't have any Ryzen machines. The build scripts are provided with the caveat that they ought to produce usable binaries (I don't see why they wouldn't).*
+See "Issues" for my to-do list before hitting "official release-ready" version 1.0, and see the "Releases" tab of this project for executable demos. See the "Building an OS Kernel/Bare-Metal x86-64 Application" and "How to Build from Source" sections below for details on how to use this project.  
 
-**Building an OS Kernel/Bare-Metal x86-64 Application**
+*Apologies to AMD Ryzen users: I can't test Ryzen-optimized binaries very thoroughly as I don't have any Ryzen machines. The build scripts are provided with the caveat that they ought to produce optimized binaries (I don't see why they wouldn't).*
 
-See the below "How to Build from Source" section for complete compilation instructions for each platform, and then all you need to do is put your code in "src" and "inc" in place of mine (leave the "startup" folder as-is). Once compiled, your program can be run in the same way as described in the "Releases" section of https://github.com/KNNSpeed/Simple-UEFI-Bootloader using a UEFI-supporting VM like Hyper-V or on actual hardware.
+## Features
+
+This project is designed to inherit all of the features provided by https://github.com/KNNSpeed/Simple-UEFI-Bootloader, in addition to the following:  
+
+- Tons of low-level support functionality in C, like text printing and scrolling, screen drawing, and system register control and diagnostic functions  
+- AVX support ***(1)***
+- Full access to UEFI 2.x runtime services and other parameters passed by the bootloader, including 1+ linear frame buffer(s) for display output
+- Unrestricted access to available hardware ***(2)***
+- Minimal development environment tuned for Windows, Mac, and Linux included in repository (can be used with the same Backend folder as the bootloader, barring differences in compiler version requirements)  
+
+***(1)*** A CPU with AVX is required to use most of the above functionality, see "Target System Requirements" below to see where to check if you have it. Most post-2011 systems do.
+***(2)*** You will need to write your own interfaces (essentially drivers or kernel extensions, depending on the term you're most familiar with) for access to more advanced hardware. I don't yet have drivers for things like PCI-Express, and things like on-board audio differ wildly between systems. Remember: this is not an operating system, this is meant to help make them and other kinds of bare-metal/operating system-less programs.  
+
+## Target System Requirements  
+
+*These are the nearly same as the bootloader's requirements. If your target system can run the bootloader, and you have AVX, you're all set.*  
+
+- x86-64 architecture with AVX (most Intel ix-2xxx or newer, AMD Ryzen or newer, see [the Wikipedia page on AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#CPUs_with_AVX))
+- Secure Boot must be disabled  
+- More than 4GB RAM (though it seems to work OK with less, e.g. Hyper-V with only 1GB)  
+- A graphics card (Intel, AMD, NVidia, etc.) **with UEFI GOP support**  
+- A keyboard  
+
+The earliest GPUs with UEFI GOP support were released around the Radeon HD 7xxx series (~2011). Anything that age or newer should have UEFI GOP support, though older models, like early 7970s, required owners to contact GPU vendors to get UEFI-compatible firmware. On Windows, you can check if your graphics card(s) have UEFI GOP support by downloading TechPowerUp's GPU-Z utility and seeing whether or not the UEFI checkbox is checked. If it is, you're all set!  
+
+*NOTE: You need to check each graphics card if there is a mix, as you will only be able to use the ones with UEFI GOP support. Per the system requirements above, you need at least one compliant device.*  
+
+## License and Crediting  
+
+Please see the LICENSE file for information on all licenses covering code created for and used in this project.  
+
+***TL;DR:***  
+
+If you don't give credit to this project, per the license you aren't allowed to do anything with any of its source code that isn't already covered by an existing license (in other words, my license covers most of the code I wrote). That's pretty much it, and why it's "almost" PD, or "PD with Credit" if I have to give it a nickname, as there's no restriction on what it gets used for as long as the license is satisfied. If you have any issues, feature requests, etc. please post in "Issues" so it can be attended to/fixed.  
+
+Note that each of these files already has appropriate crediting at the top, so you could just leave what's already there to satisfy the terms. You really should see the license file for complete information, though (it's short!!).  
+
+## Building an OS Kernel/Bare-Metal x86-64 Application
+
+The below "How to Build from Source" section contains complete compilation instructions for each platform, and then all you need to do is put your code in "src" and "inc" in place of mine (leave the "startup" folder as-is). Once compiled, your program can be run in the same way as described in the "Releases" section of https://github.com/KNNSpeed/Simple-UEFI-Bootloader using a UEFI-supporting VM like Hyper-V or on actual hardware.
 
 ***Important Points to Consider:***
 
@@ -27,11 +64,13 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 The LOADER_PARAMS data type is defined as the following structure:
 ```
 typedef struct {
-  EFI_MEMORY_DESCRIPTOR  *Memory_Map;
-  EFI_RUNTIME_SERVICES   *RTServices;
-  GPU_CONFIG             *GPU_Configs;
-  EFI_FILE_INFO          *FileMeta;
-  void                   *RSDP;
+  UINTN                   Memory_Map_Size;            // The total size of the system memory map
+  UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
+  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+  EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
+  GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
+  EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
+  void                   *RSDP;                       // A pointer to the RSDP ACPI table
 } LOADER_PARAMS;
 ```
 
@@ -39,7 +78,7 @@ Of those pointers, the only data type not defined by UEFI spec is `GPU_CONFIG`, 
 
 ```
 typedef struct {
-  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
+  EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
   UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
 } GPU_CONFIG;
 ```
@@ -48,45 +87,7 @@ You will find some relevant structures defined in "Kernel64.h" of the sample ker
 
 You will also need to `#include` the "Efi" files from "startup" in your code: refer to the "Kernel64.h" file in the "inc" directory for an example. You may find it easiest to just ```#include "Kernel64.h"``` in your code after removing any unnecessary function prototypes from the file, as it already has all the requisite inclusions and EFI structures for LOADER_PARAMS defined within it.
 
-**Target System Requirements**  
-
-*These are the nearly same as the bootloader's requirements. If your target system can run the bootloader, and you have AVX, you're all set.*  
-
-- x86-64 architecture with AVX (most Intel ix-2xxx or newer, AMD Ryzen or newer, see [the Wikipedia page on AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#CPUs_with_AVX))
-- Secure Boot must be disabled  
-- More than 4GB RAM (though it seems to work OK with less, e.g. Hyper-V with only 1GB)  
-- A graphics card (Intel, AMD, NVidia, etc.) **with UEFI GOP support**  
-- A keyboard  
-
-The earliest GPUs with UEFI GOP support were released around the Radeon HD 7xxx series (~2011). Anything that age or newer should have UEFI GOP support, though older models, like early 7970s, required owners to contact GPU vendors to get UEFI-compatible firmware. On Windows, you can check if your graphics card(s) have UEFI GOP support by downloading TechPowerUp's GPU-Z utility and seeing whether or not the UEFI checkbox is checked. If it is, you're all set!  
-
-*NOTE: You need to check each graphics card if there is a mix, as you will only be able to use the ones with UEFI GOP support. Per the system requirements above, you need at least one compliant device.*  
-
-**License and Crediting**  
-
-***TL;DR:***  
-
-Effectively PD (Public Domain) for all code in this repository not already covered by a license (i.e. my original source code), **as long as you give proper credit to this project.** See below for an example of what that might look like--more examples are included in the LICENSE file. If you don't give credit to this project, per the license you aren't allowed to use it. That's pretty much it (and why it's "effectively" or "almost" PD, or "PD with Credit" if I have to give it a nickname).  
-
-Please see the LICENSE file for further information on all licenses covering code created for and used in this project.  
-
-*Example Citation:*  
-
-From KNNSpeed's "Simple Kernel":  
-https://github.com/KNNSpeed/Simple-Kernel  
-V0.z, [Date you got it]  
-
-***Slightly More Detailed License Summary:***
-
-If you want to use, copy, modify, and/or distribute this project's original source code, in other words the code in this repository not already covered under any license, simply copy & paste the below 3 lines somewhere reasonable like in an acknowledgements or references section, as a comment in the code, at the bottom of a README or in a LICENSE file, etc. Then, change "[Date you got it]" to the date you acquired the code, and don't sue me if something goes wrong - especially since there's no warranty (and sometimes firmware vendors just don't follow the UEFI spec in unforeseen ways, but it would be great if you posted an issue so I could fix it!). Thanks!
-
-From KNNSpeed's "Simple Kernel":  
-https://github.com/KNNSpeed/Simple-Kernel  
-V0.z, [Date you got it]  
-
-(As mentioned in the TL;DR, please see the LICENSE file for further information on all licenses covering code created for and used in this project.)  
-
-**How to Build from Source**  
+## How to Build from Source  
 
 Windows: Requires MinGW-w64 based on GCC 8.1.0 or later  
 Mac: Requires Mac OS Sierra or later with the latest XCode Command Line Tools for the OS  
@@ -154,7 +155,7 @@ I cannot make any guarantees whatsoever for earlier versions, especially with th
 
     For more information about building GCC and Binutils, see these: http://www.linuxfromscratch.org/blfs/view/cvs/general/gcc.html & http://www.linuxfromscratch.org/lfs/view/development/chapter06/binutils.html  
 
-**Change Log**  
+## Change Log  
 
 V0.z (2/20/2019) - Major update: AVX is now required, separated code out of code files, added a TON of low-level system control functions (port I/O, control register manipulation, HWP support for systems supporting it, cpu feature checks), added CPU frequency measurement (average since boot and for specific user-defined code segments), updated text printing to include wraparound, smooth scrolling, and quick-scrolling, and prettied up code styling. Also, spun-off a new project from this one: https://github.com/KNNSpeed/AVX-Memmove
 
@@ -162,7 +163,7 @@ V0.y (2/1/2019) - Major code cleanup, added printf() and a whole host of text-di
 
 V0.x (2/2/2018) - Initial upload of environment and compilable sample. Not yet given a version number.  
 
-**Acknowledgements**  
+## Acknowledgements  
 
 - [The Data Plane Development Kit project](https://www.dpdk.org/about/) for open-source examples of various really useful optimizations.
 - [Agner Fog](https://www.agner.org/) for [amazing software optimization resources](https://www.agner.org/optimize/).

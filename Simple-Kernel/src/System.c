@@ -17,7 +17,13 @@
 
 #include "Kernel64.h"
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// System_Init: Initial Setup
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Initial setup after UEFI handoff
+//
+
 void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU)
 {
   Initialize_Global_Printf_Defaults(DefaultGPU);
@@ -47,7 +53,14 @@ void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU)
   Enable_HWP();
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_tick: Read RDTSCP
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Finally, a way to tell time! Returns reference ticks since the last CPU reset.
+// (Well, ok, technically UEFI has a runtime service to check the system time, this is mainly for CPU performance & cycle counting)
+//
+
 uint64_t get_tick(void)
 {
     uint64_t high = 0, low = 0;
@@ -59,7 +72,14 @@ uint64_t get_tick(void)
     return (high << 32 | low);
 }
 
-// Check for AVX/AVX512 support and enable it
+//----------------------------------------------------------------------------------------------------------------------------------
+// Enable_AVX: Enable AVX/AVX2/AVX512
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Check for AVX/AVX512 support and enable it. Needed in order to use AVX functions like AVX_memmove, AVX_memcpy, AVX_memset, and
+// AVX_memcmp
+//
+
 void Enable_AVX(void)
 {
   // Checking CPUID means determining if bit 21 of R/EFLAGS can be toggled
@@ -429,12 +449,18 @@ void Enable_AVX(void)
   }
 }
 
-// Exceptions and Non-Maskable Interrupts are always enabled
-// This is needed for things like keyboard input
+//----------------------------------------------------------------------------------------------------------------------------------
+// Enable_Maskable_Interrupts: Load Interrupt Descriptor Table and Enable Interrupts
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Exceptions and Non-Maskable Interrupts are always enabled.
+// This is needed for things like keyboard input.
+//
+
 void Enable_Maskable_Interrupts(void)
 {
 
-  // TODO: load interrupt handler
+  // TODO: load interrupt handler table
 
 
   uint64_t rflags = control_register_rw('f', 0, 0);
@@ -460,8 +486,17 @@ void Enable_Maskable_Interrupts(void)
   }
 }
 
-// Enable hardware power management (HWP) if available
-// Otherwise this will not do anything
+//----------------------------------------------------------------------------------------------------------------------------------
+// Enable_HWP: Enable Hardware P-States
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Enable hardware power management (HWP) if available.
+// Otherwise this will not do anything.
+//
+// Hardware P-States means you don't have to worry about implmenting CPU P-states transitions in software, as the CPU handles them
+// autonomously. Intel introduced this feature on Skylake chips.
+//
+
 void Enable_HWP(void)
 {
   uint64_t rax = 0;
@@ -496,9 +531,14 @@ void Enable_HWP(void)
   }
 }
 
-// Check a bit that Intel and AMD always set to 0, but some hypervisors like
-// Windows 10 Hyper-V set it to 1 (don't know if all VMs do) to allow for this
-// kind of check
+//----------------------------------------------------------------------------------------------------------------------------------
+// Hypervisor_check: Are We Virtualized?
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Check a bit that Intel and AMD always set to 0. Some hypervisors like Windows 10 Hyper-V set it to 1 (don't know if all VMs do) to
+// allow for this kind of check
+//
+
 uint8_t Hypervisor_check(void)
 {
   // Hypervisor check
@@ -519,14 +559,17 @@ uint8_t Hypervisor_check(void)
   }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// read_perfs_initial: Measure CPU Performance (Part 1)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Takes an array of 2x uint64_t, fills first uint with aperf and 2nd with mperf.
-// This will disable maskable interrupts, as it is expected that a call to get_CPU_freq(perfs, 1)
-// is called to process the result and re-enable the interrupts. (This and get_CPU_freq(perfs, 1)
-// should sandwich the desired code to measure.)
+// This will disable maskable interrupts, as it is expected that get_CPU_freq(perfs, 1) is called to process the result and re-enable
+// the interrupts. The functions read_perfs_initial(perfs) and get_CPU_freq(perfs, 1) should sandwich the desired code to measure.
 //
-// May not work in hypervisors (definitely does not work in Windows 10 Hyper-V),
-// but it's fine on real hardware.
+// May not work in hypervisors (definitely does not work in Windows 10 Hyper-V), but it's fine on real hardware.
 //
+
 uint8_t read_perfs_initial(uint64_t * perfs)
 {
   // Check for hypervisor
@@ -545,7 +588,7 @@ uint8_t read_perfs_initial(uint64_t * perfs)
   rflags2 = control_register_rw('f', 0, 0);
   if(rflags2 == rflags)
   {
-    printf("get_CPUfreq: Unable to disable interrupts (maybe they are already disabled?). Results may be skewed.\r\n");
+    printf("read_perfs_initial: Unable to disable interrupts (maybe they are already disabled?). Results may be skewed.\r\n");
   }
   // Now we can safely continue without something like keyboard input messing up tests
 
@@ -586,18 +629,25 @@ uint8_t read_perfs_initial(uint64_t * perfs)
   return 1; // Success
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_CPU_freq: Measure CPU Performance (Part 2)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Get CPU frequency in MHz
-// May not work in hypervisors (definitely does not work in Windows 10 Hyper-V),
-// but it's fine on real hardware
+// May not work in hypervisors (definitely does not work in Windows 10 Hyper-V), but it's fine on real hardware
 //
 // avg_or_measure: avg freq = 0 (ignores perfs argument), measuring freq during piece of code = 1
+//
 // In order to use avg_or_measure = 1, perfs array *MUST* have been filled by read_perfs_initial().
-// avg_or_measure = 0 has no such restriction, as it just measures from the last time aperf and mperf were 0,
-// which is either the last CPU reset state or last manual reset/overflow of aperf and mperf.
+// avg_or_measure = 0 has no such restriction, as it just measures from the last time aperf and mperf were 0, which is either the
+// last CPU reset state or last manual reset/overflow of aperf and mperf.
+//
+
 uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
 {
   uint64_t rax = 0, rbx = 0, rcx = 0, maxleaf = 0;
   uint64_t aperf = 1, mperf = 1; // Don't feel like dealing with division by zero.
+  uint64_t rflags = 0, rflags2 = 0;
 
   // Check function argument
   if(avg_or_measure == 1) // Measurement for some piece of code is being done.
@@ -626,14 +676,14 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
     // OK, not in a hypervisor; continuing...
 
     // Disable maskable interrupts
-    uint64_t rflags = control_register_rw('f', 0, 0);
-    uint64_t rflags2 = rflags & 0xFFFFFFFFFFFFFDFF; // Clear bit 9
+    rflags = control_register_rw('f', 0, 0);
+    rflags2 = rflags & 0xFFFFFFFFFFFFFDFF; // Clear bit 9
 
     control_register_rw('f', rflags2, 1);
     rflags2 = control_register_rw('f', 0, 0);
     if(rflags2 == rflags)
     {
-      printf("get_CPUfreq: Unable to disable interrupts (maybe they are already disabled?). Results may be skewed.\r\n");
+      printf("get_CPU_freq: Unable to disable interrupts (maybe they are already disabled?). Results may be skewed.\r\n");
     }
     // Now we can safely continue without something like keyboard input messing up tests
 
@@ -736,8 +786,7 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
 
   // Freq = TSCFreq * delta(APERF)/delta(MPERF)
   uint64_t frequency = (tsc_frequency * aperf) / mperf; // CPUID didn't help, so fall back to Sandy Bridge method.
-// TODO
-/*
+
   // All done, so re-enable maskable interrupts
   // It is possible that RFLAGS changed since it was last read...
   rflags = control_register_rw('f', 0, 0);
@@ -747,15 +796,22 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
   rflags2 = control_register_rw('f', 0, 0);
   if(rflags2 == rflags)
   {
-    printf("get_CPUfreq: Unable to re-enable interrupts.\r\n");
+    printf("get_CPU_freq: Unable to re-enable interrupts.\r\n");
   }
-*/
+
   return frequency;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// msr_rw: Read/Write Model-Specific Registers
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Read from or write to Model Specific Registers
+// msr: msr address
 // rw: 0 = read, 1 = write
 // input data is ignored for reads
+//
+
 uint64_t msr_rw(uint64_t msr, uint64_t data, int rw)
 {
   uint64_t high = 0, low = 0;
@@ -781,9 +837,16 @@ uint64_t msr_rw(uint64_t msr, uint64_t data, int rw)
   return (high << 32 | low); // For write, this will be data. Reads will be the msr's value.
 }
 
-// Read from or write to the MXCSR register (VEX-encoded)
+//----------------------------------------------------------------------------------------------------------------------------------
+// vmxcsr_rw: Read/Write MXCSR (Vex-Encoded)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read from or write to the MXCSR register (VEX-encoded version)
 // Use this one if using AVX instructions
 // rw: 0 = read, 1 = write
+// input data is ignored for reads
+//
+
 uint32_t vmxcsr_rw(uint32_t data, int rw)
 {
   if(rw == 1) // Write
@@ -805,8 +868,15 @@ uint32_t vmxcsr_rw(uint32_t data, int rw)
   return data;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// mxcsr_rw: Read/Write MXCSR (Legacy/SSE)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Read from or write to the MXCSR register (Legacy/SSE)
 // rw: 0 = read, 1 = write
+// input data is ignored for reads
+//
+
 uint32_t mxcsr_rw(uint32_t data, int rw)
 {
   if(rw == 1) // Write
@@ -828,9 +898,16 @@ uint32_t mxcsr_rw(uint32_t data, int rw)
   return data;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// control_register_rw: Read/Write Control Registers and RFLAGS
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Read from or write to the standard system control registers (CR0-CR4 and CR8) and the RFLAGS register
+// crX: an integer specifying which CR (e.g. 0 for CR0, etc.), use 'f' (with single quotes) for RFLAGS
 // in_out: writes this value if rw = 1, input value ignored on reads
 // rw: 0 = read, 1 = write
+//
+
 uint64_t control_register_rw(int crX, uint64_t in_out, int rw) // Read from or write to a control register
 {
   if(rw == 1) // Write
@@ -955,11 +1032,18 @@ uint64_t control_register_rw(int crX, uint64_t in_out, int rw) // Read from or w
   return in_out;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// xcr_rw: Read/Write Extended Control Registers
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Read from or write to the eXtended Control Registers
 // XCR0 is used to enable AVX/AVX512/SSE extended registers
+// xcrX: an integer for specifying which XCR (0 for XCR0, etc.)
 // rw: 0 = read, 1 = write
 // data is ignored for reads
-uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw)
+//
+
+uint64_t xcr_rw(uint64_t xcrX, uint64_t data, int rw)
 {
   uint64_t high = 0, low = 0;
 
@@ -969,7 +1053,7 @@ uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw)
     high = ((uint32_t *)&data)[1];
     asm volatile("xsetbv"
              : // No outputs
-             : "a" (low), "c" (xcr), "d" (high) // Input XCR# into %rcx, and high (%rdx) & low (%rax) to write
+             : "a" (low), "c" (xcrX), "d" (high) // Input XCR# into %rcx, and high (%rdx) & low (%rax) to write
              : // No clobbers
            );
   }
@@ -977,15 +1061,21 @@ uint64_t xcr_rw(uint64_t xcr, uint64_t data, int rw)
   {
     asm volatile("xgetbv"
              : "=a" (low), "=d" (high) // Outputs
-             : "c" (xcr) // Input XCR# into %rcx
+             : "c" (xcrX) // Input XCR# into %rcx
              : // No clobbers
            );
   }
   return (high << 32 | low); // For write, this will be data. Reads will be the msr's value.
 }
 
-// Read the %CS register
-// Useful for checking 64-bit mode
+//----------------------------------------------------------------------------------------------------------------------------------
+// read_cs: Read %CS Register
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read the %CS (code segement) register
+// Useful for checking if in 64-bit mode
+//
+
 uint64_t read_cs(void)
 {
   uint64_t output = 0;
@@ -997,8 +1087,15 @@ uint64_t read_cs(void)
   return output;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_gdtr: Read Global Descriptor Table Register
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Read the Global Descriptor Table Register
-// The %CS register contains an index for use with the address retrieved from this
+// The %CS register contains an index for use with the address retrieved from this, in order to point to which GDT entry is relevant
+// to the current code segment.
+//
+
 DT_STRUCT get_gdtr(void)
 {
   DT_STRUCT gdtr_data = {0};
@@ -1011,10 +1108,36 @@ DT_STRUCT get_gdtr(void)
   return gdtr_data;
 }
 
-// Read to or write from x86 port addresses
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_idtr: Read Interrupt Descriptor Table Register
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read the Interrupt Descriptor Table Register
+//
+
+DT_STRUCT get_idtr(void)
+{
+  DT_STRUCT idtr_data = {0};
+  asm volatile("sidt %[dest]"
+           : [dest] "=m" (idtr_data) // Outputs
+           : // No inputs
+           : // No clobbers
+         );
+
+  return idtr_data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// portio_rw: Read/Write I/O Ports
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read from or write to x86 port addresses
+// port_address: address of the port
 // size: 1, 2, or 4 bytes
 // rw: 0 = read, 1 = write
-// data is ignored on reads
+// input data is ignored on reads
+//
+
 uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw)
 {
   if(size == 1)
@@ -1082,8 +1205,16 @@ uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw)
   return data;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Get_Brandstring: Read CPU Brand String
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Get the 48-byte system brandstring (something like "Intel(R) Core(TM) i7-7700HQ CPU @ 2.80GHz")
-char * Get_Brandstring(uint32_t * brandstring) // "brandstring" must be a 48-byte array
+//
+// "brandstring" must be a 48-byte array
+//
+
+char * Get_Brandstring(uint32_t * brandstring)
 {
   uint64_t rax_value = 0x80000000;
   uint64_t rax = 0, rbx = 0, rcx = 0, rdx = 0;
@@ -1142,9 +1273,17 @@ char * Get_Brandstring(uint32_t * brandstring) // "brandstring" must be a 48-byt
   }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Get_Manufacturer_ID: Read CPU Manufacturer ID
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Get CPU manufacturer identifier (something like "GenuineIntel" or "AuthenticAMD")
 // Useful to verify CPU authenticity, supposedly
-char * Get_Manufacturer_ID(char * Manufacturer_ID) // "Manufacturer_ID" must be a 13-byte array
+//
+// "Manufacturer_ID" must be a 13-byte array
+//
+
+char * Get_Manufacturer_ID(char * Manufacturer_ID)
 {
   uint64_t rbx = 0, rcx = 0, rdx = 0;
 
@@ -1179,8 +1318,17 @@ char * Get_Manufacturer_ID(char * Manufacturer_ID) // "Manufacturer_ID" must be 
   return Manufacturer_ID;
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// cpu_features: Read CPUID
+//----------------------------------------------------------------------------------------------------------------------------------
+//
 // Query CPUID with the specified RAX and RCX (formerly EAX and ECX on 32-bit)
 // Contains some feature checks already.
+//
+// rax_value: value to put into %rax before calling CPUID (leaf number)
+// rcx_value: value to put into %rcx before calling CPUID (subleaf number, if applicable. Set it to 0 if there are no subleaves for the given rax_value)
+//
+
 void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 {
   // x86 does not memory-map control registers, unlike, for example, STM32 chips
@@ -1511,3 +1659,4 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
     printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
   }
 }
+// END cpu_features

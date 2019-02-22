@@ -18,11 +18,13 @@
 // structure from the bootloader:
 /*
   typedef struct {
-    EFI_MEMORY_DESCRIPTOR  *Memory_Map;   // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-    EFI_RUNTIME_SERVICES   *RTServices;   // UEFI Runtime Services
-    GPU_CONFIG             *GPU_Configs;  // Information about available graphics output devices; see below for details
-    EFI_FILE_INFO          *FileMeta;     // Kernel64 file metadata
-    void                   *RSDP;         // A pointer to the RSDP ACPI table
+    UINTN                   Memory_Map_Size;            // The total size of the system memory map
+    UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
+    EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
+    GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
+    EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
+    void                   *RSDP;                       // A pointer to the RSDP ACPI table
   } LOADER_PARAMS;
 */
 //
@@ -136,25 +138,34 @@ const unsigned char load_image3[144] = {
 // NOTE: Using Output_render_bitmap instead of Output_render_text technically allows any arbitrary font to be used as long as it is stored the same way as the included font8x8.
 // A character would need to be passed as otherfont['a'] instead of just 'a' in this case.
 
-/* Reminder of the LOADER_PARAMS format:
+/* Reminder of the LOADER_PARAMS and GPU_CONFIG formats:
 
   typedef struct {
-    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray; // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
+    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
     UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
   } GPU_CONFIG;
 
   typedef struct {
-    EFI_MEMORY_DESCRIPTOR  *Memory_Map;
-    EFI_RUNTIME_SERVICES   *RTServices;
-    GPU_CONFIG             *GPU_Configs;
-    EFI_FILE_INFO          *FileMeta;
-    void                   *RSDP;
+    UINTN                   Memory_Map_Size;            // The total size of the system memory map
+    UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
+    EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
+    GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
+    EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
+    void                   *RSDP;                       // A pointer to the RSDP ACPI table
   } LOADER_PARAMS;
 */
 
-// Old: void kernel_main(EFI_MEMORY_DESCRIPTOR * Memory_Map, EFI_RUNTIME_SERVICES * RTServices, EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE * GPU_Mode, EFI_FILE_INFO * FileMeta, void * RSDP)
+//----------------------------------------------------------------------------------------------------------------------------------
+// kernel_main: Main Function
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// The main entry point of the kernel/program/OS and what the bootloader hands off to.
+//
+
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
+  // LP->RTServices->SetVirtualAddressMap(LP->Memory_Map_Size, LP->Memory_Map_Descriptor_Size, EFI_MEMORY_DESCRIPTOR_VERSION, LP->Memory_Map);
   System_Init(LP->GPU_Configs->GPUArray[0]); // See system.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
 
   // Main body start
@@ -167,6 +178,12 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   Get_Manufacturer_ID(Manufacturer_ID); // Returns a char* pointer to Manufacturer_ID. Don't need it here, though.
   printf("%s\r\n\n", Manufacturer_ID);
 
+
+  DT_STRUCT idt = get_idtr(); // IDT can have up to 256 interrupt descriptors to account for. (IRQs 16-255 can be handled by APIC, 0-255 can be handled by INTR pin)
+  printf("IDTR addr: %#qx, limit: %#hx\r\n", idt.BaseAddress, idt.Limit);
+
+//  print_kernel_memmap(LP->Memory_Map, LP->Memory_Map_Size, LP->Memory_Map_Descriptor_Size);
+/*
   printf("Avg CPU freq: %qu\r\n", get_CPU_freq(NULL, 0));
   uint64_t perfcounters[2] = {1, 1};
   read_perfs_initial(perfcounters);
@@ -185,21 +202,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   printf("Perfcounter CPU freq: %qu\r\n", get_CPU_freq(perfcounters, 1));
   printf("Avg CPU freq: %qu\r\n", get_CPU_freq(NULL, 0));
   printf("\r\n\r\n");
-
-  /*
-  typedef UINT64          EFI_PHYSICAL_ADDRESS;
-  typedef UINT64          EFI_VIRTUAL_ADDRESS;
-
-  #define EFI_MEMORY_DESCRIPTOR_VERSION  1
-  typedef struct {
-      UINT32                          Type;           // Field size is 32 bits followed by 32 bit pad
-      UINT32                          Pad;            // There's no pad in the spec...
-      EFI_PHYSICAL_ADDRESS            PhysicalStart;  // Field size is 64 bits
-      EFI_VIRTUAL_ADDRESS             VirtualStart;   // Field size is 64 bits
-      UINT64                          NumberOfPages;  // Field size is 64 bits
-      UINT64                          Attribute;      // Field size is 64 bits
-  } EFI_MEMORY_DESCRIPTOR;
-  */
+*/
 
   unsigned char swapped_image[sizeof(load_image2)] = {0}; // Local arrays are undefined until set.
 
@@ -371,12 +374,20 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 }
 // END MAIN
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Print_All_CRs_and_Some_Major_CPU_Features: Print Common CPU Parameters of Interest
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Prints the status of all non-reserved control registers, in addition to querying CPUID for many common features and points of interest.
+//
 // The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
+//
+
 void Print_All_CRs_and_Some_Major_CPU_Features(void)
 {
   uint64_t cr0 = control_register_rw(0, 0, 0);
   printf("CR0: %#qx\r\n", cr0);
-//  printf("CR1: %#qx\r\n", control_register_rw(1, 0, 0));
+//  printf("CR1: %#qx\r\n", control_register_rw(1, 0, 0)); // Reserved, will crash without exception handlers
   uint64_t cr2 = control_register_rw(2, 0, 0);
   printf("CR2: %#qx\r\n", cr2);
   uint64_t cr3 = control_register_rw(3, 0, 0);
@@ -522,6 +533,20 @@ void Print_All_CRs_and_Some_Major_CPU_Features(void)
   }
 }
 
+// Why does "general-regs-only" not work?
+/*
+// Interrupt handler
+__attribute__ ((interrupt, target("no-sse,no-mmx,no-3dnow,no-fp-ret-in-387"))) void IRQ_Handler(INTERRUPT_FRAME * frame)
+{
+
+}
+
+// Exception handler
+__attribute__ ((interrupt, target("no-sse,no-mmx,no-3dnow,no-fp-ret-in-387"))) void Exception_Handler(INTERRUPT_FRAME * frame, uint64_t error_code)
+{
+
+}
+*/
 ////////////////////////////////////////////////////
 
 // TODO: keyboard driver (PS/2 for starters, then USB)
