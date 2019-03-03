@@ -51,7 +51,7 @@
 #define MINOR_VER 'z'
 
 // The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
-const unsigned char load_image[48] = {
+static const unsigned char load_image[48] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
     0x0C, 0x00, 0x06, 0x00, // ....@@.. ........ .....@@. ........
@@ -67,7 +67,7 @@ const unsigned char load_image[48] = {
 }; // Width = 27 bits, height = 12 bytes
 
 // load_image2 is what actually looks like load_image's ascii art when rendered
-const unsigned char load_image2[96] = {
+static const unsigned char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
@@ -94,7 +94,7 @@ const unsigned char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00  // ........ ..@@@@@@ @....... ........
 }; // Width = 27 bits, height = 24 bytes
 
-const unsigned char load_image3[144] = {
+static const unsigned char load_image3[144] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
@@ -165,10 +165,10 @@ const unsigned char load_image3[144] = {
 
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
-  // LP->RTServices->SetVirtualAddressMap(LP->Memory_Map_Size, LP->Memory_Map_Descriptor_Size, EFI_MEMORY_DESCRIPTOR_VERSION, LP->Memory_Map);
-  System_Init(LP->GPU_Configs->GPUArray[0]); // See system.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
+  // Now initialize the system (Virtual mappings (identity-map), printf, AVX, any straggling control registers, HWP, maskable interrupts)
+  System_Init(LP); // See System.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
 
-  // Main body start
+  // Main Body Start
 
   char brandstring[48] = {0};
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
@@ -182,7 +182,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   DT_STRUCT idt = get_idtr(); // IDT can have up to 256 interrupt descriptors to account for. (IRQs 16-255 can be handled by APIC, 0-255 can be handled by INTR pin)
   printf("IDTR addr: %#qx, limit: %#hx\r\n", idt.BaseAddress, idt.Limit);
 
-//  print_kernel_memmap(LP->Memory_Map, LP->Memory_Map_Size, LP->Memory_Map_Descriptor_Size);
+  print_system_memmap();
 /*
   printf("Avg CPU freq: %qu\r\n", get_CPU_freq(NULL, 0));
   uint64_t perfcounters[2] = {1, 1};
@@ -215,7 +215,7 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
     bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
   }
 
-  Print_All_CRs_and_Some_Major_CPU_Features(); // The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
+//  Print_All_CRs_and_Some_Major_CPU_Features(); // The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
 
   // ASM so that GCC doesn't mess with this loop. This is about as optimized this can get.
   asm volatile("movl $1, %%eax\n\t" // Loop ends on overflow

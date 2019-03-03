@@ -24,15 +24,31 @@
 // Initial setup after UEFI handoff
 //
 
-void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU)
+void System_Init(LOADER_PARAMS * LP)
 {
-  Initialize_Global_Printf_Defaults(DefaultGPU);
-  // This function call is required to initialize printf. Set default GPU as GPU 0. This function can also be used to reset all global printf values and reassign a new default GPU at any time.
+  // This memory initialization stuff needs to go first.
+  Global_Memory_Info.MemMap = LP->Memory_Map;
+  Global_Memory_Info.MemMapSize = LP->Memory_Map_Size;
+  Global_Memory_Info.MemMapDescriptorSize = LP->Memory_Map_Descriptor_Size;
+  // Apparently some systems won't totally leave you be without setting a virtual address map (https://www.spinics.net/lists/linux-efi/msg14108.html
+  // and https://mjg59.dreamwidth.org/3244.html). Well, fine; identity map it now and fuhgetaboutit.
+  // This will modify the memory map (but not its size), and set Global_Memory_Info.MemMap.
+  if(Set_Identity_VMAP(LP->RTServices) == NULL)
+  {
+    Global_Memory_Info.MemMap = LP->Memory_Map; // No virtual addressing possible, evidently.
+  }
+  // Don't merge any regions on the map until after SetVirtualAddressMap() has been called. After that call, it can be modified safely.
+
+  // This function call is required to initialize printf. Set default GPU as GPU 0.
+  // It can also be used to reset all global printf values and reassign a new default GPU at any time.
+  Initialize_Global_Printf_Defaults(LP->GPU_Configs->GPUArray[0]);
   // Technically, printf is immediately usable now. I'd recommend waitng for AVX/SSE init just in case the compiler uses them when optimizing printf.
+
   Enable_AVX(); // ENABLING AVX ASAP
   // All good now.
 
-// I know this bit isn't always set by default. Set it.
+  // I know this CR0.NE bit isn't always set by default. Set it.
+  // Generate and handle exceptions in the modern way, per Intel SDM
   uint64_t cr0 = control_register_rw(0, 0, 0);
   if(!(cr0 & (1 << 5)))
   {
@@ -44,13 +60,19 @@ void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU)
       printf("Error setting CR0.NE bit.\r\n");
     }
   }
+// TODO: print memmap before and after to test
+  print_system_memmap();
+
+  // Set up the memory map for use with mallocX (X = 16, 32, 64)
+  Setup_MemMap();
+
+  // HWP
+  Enable_HWP();
 
   // Interrupts
   // Exceptions and Non-Maskable Interrupts are always enabled.
   // Enable_Maskable_Interrupts() here
 
-  // HWP
-  Enable_HWP();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
