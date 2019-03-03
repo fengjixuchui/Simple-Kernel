@@ -189,7 +189,7 @@ EFI_STATUS
 
 typedef
 EFI_STATUS
-(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these immediately when kernel starts:
+(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these when kernel starts after System_Init:
     IN UINTN                        MemoryMapSize,     // LP->Memory_Map_Size
     IN UINTN                        DescriptorSize,    // LP->Memory_Map_Descriptor_Size
     IN UINT32                       DescriptorVersion, // EFI_MEMORY_DESCRIPTOR_VERSION
@@ -355,11 +355,10 @@ typedef struct {
 
 // END UEFI and Bootloader functions, definitions, and declarations
 
-//------------------------------------------------------------------------------
-// Anything below this comment (except the #endif at the very bottom) is safe to
-// remove without breaking compatibility with the Simple UEFI Bootloader. Useful
-// if you wanted to make your own kernel from total scratch.
-//------------------------------------------------------------------------------
+//==================================================================================================================================
+// Anything below this comment (except the #endif at the very bottom) is safe to  remove without breaking compatibility with the
+// Simple UEFI Bootloader. Useful if you wanted to make your own kernel from total scratch.
+//==================================================================================================================================
 
 //----------------------------------------------------------------------------------------------------------------------------------
 //  Function Support Definitions
@@ -368,18 +367,28 @@ typedef struct {
 // Support structure definitions and declarations
 //
 
+// For memory functions, like malloc and friends in Memory.c
 typedef struct {
-	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;
-	UINT32                             height; // Character font height
-	UINT32                             width; // Character font width (in bits)
-	UINT32                             font_color; // Default font color
-	UINT32                             highlight_color; // Default highlight color
+  UINTN                   MemMapSize;           // Size of the memory map (LP->Memory_Map_Size)
+  UINTN                   MemMapDescriptorSize; // Size of memory map descriptors (LP->Memory_Map_Descriptor_Size)
+  EFI_MEMORY_DESCRIPTOR  *MemMap;               // Pointer to memory map (LP->Memory_Map)
+} GLOBAL_MEMORY_INFO_STRUCT;
+
+GLOBAL_MEMORY_INFO_STRUCT Global_Memory_Info;
+
+// For printf
+typedef struct {
+	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;       // Default EFI GOP output device from GPUArray (should be GPUArray[0] if there's only 1)
+	UINT32                             height;           // Character font height
+	UINT32                             width;            // Character font width (in bits)
+	UINT32                             font_color;       // Default font color
+	UINT32                             highlight_color;  // Default highlight color
   UINT32                             background_color; // Default background color
-	UINT32                             x; // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
-	UINT32                             y; // Topmost y-coord
-	UINT32                             scale; // Output scale for systemfont used by printf
-  UINT32                             index; // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
-  UINT32                             textscrollmode; // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
+	UINT32                             x;                // Leftmost x-coord that's in-bounds (NOTE: per UEFI Spec 2.7 Errata A, (0,0) is always the top left in-bounds pixel.)
+	UINT32                             y;                // Topmost y-coord
+	UINT32                             scale;            // Output scale for systemfont used by printf
+  UINT32                             index;            // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
+  UINT32                             textscrollmode;   // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
 } GLOBAL_PRINT_INFO_STRUCT;
 
 GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
@@ -418,7 +427,7 @@ typedef struct __attribute__ ((packed)) {
 //
 
 // Initialization-related functions (System.c)
-void System_Init(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE DefaultGPU);
+void System_Init(LOADER_PARAMS * LP);
 
 uint64_t get_tick(void);
 void Enable_AVX(void);
@@ -444,10 +453,38 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 void Print_All_CRs_and_Some_Major_CPU_Features(void);
 
 // Memory-related functions (Memory.c)
-uint8_t VerifyZeroMem(uint64_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-bit unsigned int whose value is the memory address to verify
-EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(uint64_t pages, EFI_PHYSICAL_ADDRESS OldAddress, EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
-EFI_PHYSICAL_ADDRESS ActuallyFreeAddressByPage(UINT64 pages, EFI_PHYSICAL_ADDRESS OldAddress, EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
-void print_kernel_memmap(EFI_MEMORY_DESCRIPTOR * MemMap, UINTN MemMapSize, UINTN MemMapDescriptorSize);
+uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-bit unsigned int whose value is the memory address to verify
+void print_system_memmap(void);
+EFI_MEMORY_DESCRIPTOR * Set_Identity_VMAP(EFI_RUNTIME_SERVICES * RTServices);
+void Setup_MemMap(void);
+
+  // For physical addresses
+__attribute__((malloc)) void * malloc(size_t numbytes);
+
+__attribute__((malloc)) void * malloc16(size_t numbytes);
+__attribute__((malloc)) void * malloc32(size_t numbytes);
+__attribute__((malloc)) void * malloc64(size_t numbytes);
+__attribute__((malloc)) void * malloc4k(size_t pages);
+
+EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress);
+EFI_PHYSICAL_ADDRESS AllocateFreeAddressByPage(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress);
+EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy16Bytes(size_t numbytes, EFI_PHYSICAL_ADDRESS OldAddress);
+EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy32Bytes(size_t numbytes, EFI_PHYSICAL_ADDRESS OldAddress);
+EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy64Bytes(size_t numbytes, EFI_PHYSICAL_ADDRESS OldAddress);
+
+  // For virtual addresses
+__attribute__((malloc)) void * Vmalloc(size_t numbytes);
+
+__attribute__((malloc)) void * Vmalloc16(size_t numbytes);
+__attribute__((malloc)) void * Vmalloc32(size_t numbytes);
+__attribute__((malloc)) void * Vmalloc64(size_t numbytes);
+__attribute__((malloc)) void * Vmalloc4k(size_t pages);
+
+EFI_VIRTUAL_ADDRESS VActuallyFreeAddress(size_t pages, EFI_VIRTUAL_ADDRESS OldAddress);
+EFI_VIRTUAL_ADDRESS VAllocateFreeAddressByPage(size_t pages, EFI_VIRTUAL_ADDRESS OldAddress);
+EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy16Bytes(size_t numbytes, EFI_VIRTUAL_ADDRESS OldAddress);
+EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy32Bytes(size_t numbytes, EFI_VIRTUAL_ADDRESS OldAddress);
+EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy64Bytes(size_t numbytes, EFI_VIRTUAL_ADDRESS OldAddress);
 
 // Drawing-related functions (Display.c)
 void Blackscreen(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU);
