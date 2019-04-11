@@ -19,7 +19,7 @@ This project is designed to inherit all of the features provided by https://gith
 - Unrestricted access to available hardware ***(2)***
 - Minimal development environment tuned for Windows, Mac, and Linux included in repository (can be used with the same Backend folder as the bootloader, barring differences in compiler version requirements)  
 
-***(1)*** A CPU with AVX is required to use most of the above functionality, see "Target System Requirements" below to see where to check if you have it. Most post-2011 systems do.  
+***(1)*** A CPU with AVX is required to use most of the above functionality, see "Target System Requirements" below to see where to check if you have it. Most post-2011 systems do.
 ***(2)*** You will need to write your own interfaces (essentially drivers or kernel extensions, depending on the term you're most familiar with) for access to more advanced hardware. I don't yet have drivers for things like PCI-Express, and things like on-board audio differ wildly between systems. Remember: this is not an operating system, this is meant to help make them and other kinds of bare-metal/operating system-less programs.  
 
 ## Target System Requirements  
@@ -64,13 +64,18 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 The LOADER_PARAMS data type is defined as the following structure:
 ```
 typedef struct {
-  UINTN                   Memory_Map_Size;            // The total size of the system memory map
-  UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
-  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-  EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
-  GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
-  EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
-  void                   *RSDP;                       // A pointer to the RSDP ACPI table
+  UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
+  UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
+  EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded Kernel64 file
+  UINTN                   Kernel_Pages;                   // The number of pages allocated for the Kernel64 file
+  UINTN                   Memory_Map_Size;                // The total size of the system memory map
+  UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+  UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
+  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+  EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
+  GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see below for details
+  EFI_FILE_INFO          *FileMeta;                       // Kernel64 file metadata
+  void                   *RSDP;                           // A pointer to the RSDP ACPI table
 } LOADER_PARAMS;
 ```
 

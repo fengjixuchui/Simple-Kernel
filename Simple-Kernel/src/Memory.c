@@ -21,11 +21,18 @@
 // TODO: malloc--it's based on ActuallyFreeAddress/ByPage
 // Also: calloc, realloc, and (free, freepages, vfree, vfreepages)
 
+//----------------------------------------------------------------------------------------------------------------------------------
+//  malloc: Allocate Physical Memory with Alignment
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Dynamically allocate physical memory aligned to the nearest suitable address alignment value
+//
+
 __attribute__((malloc)) void * malloc(size_t numbytes)
 {
   if(numbytes <= 16)
   {
-    return malloc16(numbytes); // 216-byte aligned
+    return malloc16(numbytes); // 16-byte aligned
   }
   else if(numbytes <= 32)
   {
@@ -37,20 +44,23 @@ __attribute__((malloc)) void * malloc(size_t numbytes)
   }
   else // >= 4096
   {
-    size_t numbytes_to_pages = numbytes >> EFI_PAGE_SHIFT;
-    if(numbytes & EFI_PAGE_MASK)
-    {
-      numbytes_to_pages++;
-    }
+    size_t numbytes_to_pages = EFI_SIZE_TO_PAGES(numbytes);
     return malloc4k(numbytes_to_pages);
   }
 }
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  vmalloc: Allocate Virtual Memory with Alignment
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Dynamically allocate virtual memory aligned to the nearest suitable address alignment value
+//
 
 __attribute__((malloc)) void * Vmalloc(size_t numbytes)
 {
   if(numbytes <= 16)
   {
-    return Vmalloc16(numbytes); // 216-byte aligned
+    return Vmalloc16(numbytes); // 16-byte aligned
   }
   else if(numbytes <= 32)
   {
@@ -62,12 +72,8 @@ __attribute__((malloc)) void * Vmalloc(size_t numbytes)
   }
   else // >= 4096
   {
-    size_t numbytes_to_pages = numbytes >> EFI_PAGE_SHIFT;
-    if(numbytes & EFI_PAGE_MASK)
-    {
-      numbytes_to_pages++;
-    }
-    return malloc4k(numbytes_to_pages);
+    size_t numbytes_to_pages = EFI_SIZE_TO_PAGES(numbytes);
+    return Vmalloc4k(numbytes_to_pages);
   }
 }
 
@@ -288,12 +294,7 @@ void Setup_MemMap(void)
 {
   // Make a new memory map with the location of the map itself, which is needed to use malloc().
   EFI_MEMORY_DESCRIPTOR * Piece;
-  EFI_PHYSICAL_ADDRESS PhysicalEnd;
-  size_t numpages = (Global_Memory_Info.MemMapSize + Global_Memory_Info.MemMapDescriptorSize) >> EFI_PAGE_SHIFT; // Need enough space to contain the map + one additional descriptor (for the map itself)
-  if((Global_Memory_Info.MemMapSize + Global_Memory_Info.MemMapDescriptorSize) & EFI_PAGE_MASK)
-  { // Need one more page to contain the whole map
-    numpages++;
-  }
+  size_t numpages = EFI_SIZE_TO_PAGES(Global_Memory_Info.MemMapSize + Global_Memory_Info.MemMapDescriptorSize); // Need enough space to contain the map + one additional descriptor (for the map itself)
 
   // Map's gettin' evicted, gotta relocate.
   EFI_PHYSICAL_ADDRESS new_MemMap_base_address = ActuallyFreeAddress(numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
@@ -312,16 +313,22 @@ void Setup_MemMap(void)
     // Zero out the old one
     AVX_memset(Global_Memory_Info.MemMap, 0, Global_Memory_Info.MemMapSize);
 
-    // Update Global_Memory_Info with new values
+    // Update Global_Memory_Info MemMap location with new address
     Global_Memory_Info.MemMap = new_MemMap;
-    Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
 
-    // Get a piece pointer for the new location of the map (scan the map to find it)
+    // Get a pointer for the descriptor corresponding to the new location of the map (scan the map to find it)
     for(Piece = Global_Memory_Info.MemMap; (uint8_t*)Piece < ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
     {
+      if(Piece->PhysicalStart == new_MemMap_base_address)
+      { // Found it, Piece holds the spot now. Also, we know the map base is at Piece->PhysicalStart of an EfiConventionalMemory area because we put it there with ActuallyFreeAddress.
+        break;
+      }
+
+      /*
+      // This commented-out code would be used instead of the above conditional if, for some reason, the map is situated not at the PhysicalStart boundary.
       if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= numpages)) // The new map's in EfiConventionalMemory
       {
-        PhysicalEnd = Piece->PhysicalStart + (Piece->NumberOfPages << EFI_PAGE_SHIFT); // Get the end of this range for bounds checking (this value might be the start address of the next range)
+        EFI_PHYSICAL_ADDRESS PhysicalEnd = Piece->PhysicalStart + (Piece->NumberOfPages << EFI_PAGE_SHIFT); // Get the end of this range for bounds checking (this value might be the start address of the next range)
 
         if(
             ((uint8_t*)Global_Memory_Info.MemMap >= (uint8_t*)Piece->PhysicalStart)
@@ -332,6 +339,8 @@ void Setup_MemMap(void)
           break; // Found it, Piece holds the spot now. Also, we know it's at the start of Piece->PhysicalStart because we put it there with ActuallyFreeAddress.
         }
       }
+      */
+
     }
     if((uint8_t*)Piece == ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize))
     {
@@ -339,10 +348,11 @@ void Setup_MemMap(void)
     }
     else
     {
-      // Mark the new area as memmap
-      if(Piece->NumberOfPages == numpages) // Trivial case: The new space descriptor is just the right size and needs no splitting; saves a memory descriptor
+      // Mark the new area as memmap (it's currently EfiConventionalMemory)
+      if(Piece->NumberOfPages == numpages) // Trivial case: The new space descriptor is just the right size and needs no splitting; saves a memory descriptor so MemMapSize doesn't need to be increased
       {
         Piece->Type = EfiMaxMemoryType + 3; // Special memmap type
+        // Nothng to do for Pad, PhysicalStart, VirtualStart, NumberOfPages, and Attribute
       }
       else // Need to insert a memmap descriptor. Thanks to the way ActuallyFreeAddress works we know the map's new area is at the base of the EfiConventionalMemory descriptor
       {
@@ -371,6 +381,9 @@ void Setup_MemMap(void)
         Piece->VirtualStart = new_descriptor_temp.VirtualStart;
         Piece->NumberOfPages = new_descriptor_temp.NumberOfPages;
         Piece->Attribute = new_descriptor_temp.Attribute;
+
+        // Update Global_Memory_Info with new MemMap size
+        Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
       }
       // Done modifying new map.
 
@@ -407,7 +420,7 @@ EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldA
     }
   }
 
-  // Loop ended without a DiscoveredAddress
+  // Loop ended without a discovered address
   if(Piece >= (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize))
   {
     // Return address -1, which will cause AllocatePages to fail
@@ -1086,6 +1099,201 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy64Bytes(size_t numbytes, EFI_VIRTUAL_A
 
   return DiscoveredAddress;
 }
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  ReclaimEfiBootServicesMemory: Convert EfiBootServicesCode and EfiBootServicesData to EfiConventionalMemory
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// After calling ExitBootServices(), EfiBootServicesCode and EfiBootServicesData are supposed to become free memory. This is not
+// always the case (see: https://mjg59.dreamwidth.org/11235.html), but this function exists because the UEFI Specification (2.7A)
+// states that it really should be free.
+//
+// Calling this function more than once won't do anything other than just waste some CPU time.
+//
+
+void ReclaimEfiBootServicesMemory(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+
+  // Check for Boot Services leftovers in the map
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if((Piece->Type == EfiBootServicesCode) || (Piece->Type == EfiBootServicesData))
+    {
+      Piece->Type = EfiConventionalMemory; // Convert to EfiConventionalMemory
+    }
+  }
+  // Done.
+  // TODO: call mergecontiguousconventionalmemory
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  MergeContiguousConventionalMemory: Merge Adjacent EfiConventionalMemory Entries
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Merge adjacent EfiConventionalMemory locations that are listed as separate entries. This can only work with physical addresses.
+//
+// This function also contains the logic necessary to shrink the memory map's own descriptor to reclaim extra space.
+//
+
+void MergeContiguousConventionalMemory(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  EFI_MEMORY_DESCRIPTOR * Piece2;
+  EFI_PHYSICAL_ADDRESS PhysicalEnd;
+  size_t numpages = 1;
+
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    // Within each EfiConventionalMemory, check adjacents
+    if(Piece->Type == EfiConventionalMemory)
+    {
+      PhysicalEnd = Piece->PhysicalStart + (Piece->NumberOfPages << EFI_PAGE_SHIFT); // Get the end of this range, which may be the start of another range
+
+      // See if PhysicalEnd matches any PhysicalStart of EfiConventionalMemory
+
+      for(Piece2 = Global_Memory_Info.MemMap; Piece2 < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece2 = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece2 + Global_Memory_Info.MemMapDescriptorSize))
+      {
+        if( (Piece2->Type == EfiConventionalMemory) && (PhysicalEnd == Piece2->PhysicalStart) )
+        {
+          // Found one.
+          // Add this entry's pages to Piece and delete this entry.
+          Piece->NumberOfPages += Piece2-> NumberOfPages;
+          AVX_memset(Piece2, 0, Global_Memory_Info.MemMapDescriptorSize);
+          AVX_memmove(Piece2, (uint8_t*)Piece2 + Global_Memory_Info.MemMapDescriptorSize, ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize) - ((uint8_t*)Piece2 + Global_Memory_Info.MemMapDescriptorSize));
+
+          // Update Global_Memory_Info
+          Global_Memory_Info.MemMapSize -= Global_Memory_Info.MemMapDescriptorSize;
+
+          // Zero out the entry that used to be at the end
+          AVX_memset((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize, 0, Global_Memory_Info.MemMapDescriptorSize);
+        }
+      } // End inner for loop
+
+    }
+    else if(Piece->Type == EfiMaxMemoryType + 3)
+    { // Get the reported size of the memmap, we'll need it later to see if free space can be reclaimed
+      numpages = Piece->NumberOfPages;
+    }
+  }
+
+  size_t numpages2 = (Global_Memory_Info.MemMapSize + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT; // How much space does the new map take?
+
+  // After all that, maybe some space can be reclaimed. Let's see what we can do...
+  if(numpages2 < numpages)
+  {
+    // Re-find memmap entry, since the memmap layout has changed.
+    for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+    {
+      if(Piece->Type == EfiMaxMemoryType + 3) // Found it.
+      {
+        // Is the next piece an EfiConventionalMemory type?
+        if( ((EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))->Type == EfiConventionalMemory ) // Remember... sizeof(EFI_MEMORY_DESCRIPTOR) != MemMapDescriptorSize :/
+        { // Yes, we can reclaim without requiring a new entry
+          size_t freedpages = numpages - numpages2;
+
+          // Modify MemMap's entry
+          Piece->NumberOfPages = numpages2;
+
+          // Modify adjacent EfiConventionalMemory's entry
+          ((EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))->NumberOfPages += freedpages;
+          ((EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))->PhysicalStart -= (freedpages << EFI_PAGE_SHIFT);
+          ((EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))->VirtualStart -= (freedpages << EFI_PAGE_SHIFT);
+
+          // Done. Nice.
+        }
+        // No, we need a new entry, which will require a new page if the last entry is on a page edge or would spill over a page edge. Better to be safe then sorry!
+        // First, maybe there's room for another descriptor in the last page
+        else if((Global_Memory_Info.MemMapSize + Global_Memory_Info.MemMapDescriptorSize) <= (numpages2 << EFI_PAGE_SHIFT))
+        { // Yes, we can reclaim and fit in another descriptor
+
+          // Make a temporary descriptor to hold current MemMap entry's values
+          EFI_MEMORY_DESCRIPTOR new_descriptor_temp;
+          new_descriptor_temp.Type = Piece->Type; // Special memmap type
+          new_descriptor_temp.Pad = Piece->Pad;
+          new_descriptor_temp.PhysicalStart = Piece->PhysicalStart;
+          new_descriptor_temp.VirtualStart = Piece->VirtualStart;
+          new_descriptor_temp.NumberOfPages = numpages2; // New size of MemMap entry
+          new_descriptor_temp.Attribute = Piece->Attribute;
+
+          // Modify the descriptor-to-move
+          Piece->Type = EfiConventionalMemory;
+          // No pad change
+          Piece->PhysicalStart += (numpages2 << EFI_PAGE_SHIFT);
+          Piece->VirtualStart += (numpages2 << EFI_PAGE_SHIFT);
+          Piece->NumberOfPages = numpages - numpages2;
+          // No attribute change
+
+          // Move (copy) the whole memmap that's above this piece (including this freshly modified piece) from this piece to one MemMapDescriptorSize over
+          AVX_memmove((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize, Piece, ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize) - (uint8_t*)Piece); // Pointer math to get size
+
+          // Insert the new piece (by overwriting the now-duplicated entry with new values)
+          // I.e. turn this piece into what was stored in the temporary descriptor above
+          Piece->Type = new_descriptor_temp.Type;
+          Piece->Pad = new_descriptor_temp.Pad;
+          Piece->PhysicalStart = new_descriptor_temp.PhysicalStart;
+          Piece->VirtualStart = new_descriptor_temp.VirtualStart;
+          Piece->NumberOfPages = new_descriptor_temp.NumberOfPages;
+          Piece->Attribute = new_descriptor_temp.Attribute;
+
+          // Update Global_Memory_Info MemMap size
+          Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
+
+          // Done
+        }
+        // No, it would spill over to a new page
+        else // MemMap is always put at the base of an EfiConventionalMemory region after Setup_MemMap
+        {
+          // Do we have more than a descriptor's worth of pages reclaimable?
+          size_t pages_per_memory_descriptor = (Global_Memory_Info.MemMapDescriptorSize + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT;
+
+          if((numpages2 + pages_per_memory_descriptor) < numpages)
+          { // Yes, so we can hang on to one [set] of them and make a new EfiConventionalMemory entry for the rest.
+            size_t freedpages = numpages - numpages2 - pages_per_memory_descriptor;
+
+            // Make a temporary descriptor to hold current MemMap entry's values
+            EFI_MEMORY_DESCRIPTOR new_descriptor_temp;
+            new_descriptor_temp.Type = Piece->Type; // Special memmap type
+            new_descriptor_temp.Pad = Piece->Pad;
+            new_descriptor_temp.PhysicalStart = Piece->PhysicalStart;
+            new_descriptor_temp.VirtualStart = Piece->VirtualStart;
+            new_descriptor_temp.NumberOfPages = numpages2 + pages_per_memory_descriptor; // New size of MemMap entry
+            new_descriptor_temp.Attribute = Piece->Attribute;
+
+            // Modify the descriptor-to-move
+            Piece->Type = EfiConventionalMemory;
+            // No pad change
+            Piece->PhysicalStart += ((numpages2 + pages_per_memory_descriptor) << EFI_PAGE_SHIFT);
+            Piece->VirtualStart += ((numpages2 + pages_per_memory_descriptor) << EFI_PAGE_SHIFT);
+            Piece->NumberOfPages = freedpages;
+            // No attribute change
+
+            // Move (copy) the whole memmap that's above this piece (including this freshly modified piece) from this piece to one MemMapDescriptorSize over
+            AVX_memmove((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize, Piece, ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize) - (uint8_t*)Piece); // Pointer math to get size
+
+            // Insert the new piece (by overwriting the now-duplicated entry with new values)
+            // I.e. turn this piece into what was stored in the temporary descriptor above
+            Piece->Type = new_descriptor_temp.Type;
+            Piece->Pad = new_descriptor_temp.Pad;
+            Piece->PhysicalStart = new_descriptor_temp.PhysicalStart;
+            Piece->VirtualStart = new_descriptor_temp.VirtualStart;
+            Piece->NumberOfPages = new_descriptor_temp.NumberOfPages;
+            Piece->Attribute = new_descriptor_temp.Attribute;
+
+            // Update Global_Memory_Info MemMap size
+            Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
+          }
+          // No, only 1 [set of] page(s) was reclaimable and adding another entry would spill over. So don't do anything then and hang on to the extra empty page(s).
+        }
+        // All done. There's only one MemMap entry so we can break out of the loop now.
+        break;
+      }
+    }
+  }
+
+  // Done
+}
+
 /*
 //----------------------------------------------------------------------------------------------------------------------------------
 //  AllocateMemoryPages: Allocate Pages at a Physical Address
@@ -1142,11 +1350,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
   // Make a new memory map with the location of the map itself, which is needed to use malloc().
   EFI_MEMORY_DESCRIPTOR * Piece;
   EFI_PHYSICAL_ADDRESS PhysicalEnd;
-  size_t numpages = Global_Memory_Info.MemMapSize >> EFI_PAGE_SHIFT;
-  if(Global_Memory_Info.MemMapSize & EFI_PAGE_MASK)
-  { // Need one more page to contain the whole map
-    numpages++;
-  }
+  size_t numpages = (Global_Memory_Info.MemMapSize + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT;
 
   // We know the map is at Global_Memory_Info.MemMap.
   // Iterate through the memory map to find what descriptor contains it. It'll be in a section of type EfiLoaderData (or whatever the bootloader allocated for it before ExitBootServices())
@@ -1217,11 +1421,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
             }
             else // This may never be necessary, but if it does become needed one day (huge descriptors or something), support is already here.
             {
-              additional_pages = (Global_Memory_Info.MemMapDescriptorSize << 1) >> EFI_PAGE_SHIFT;
-              if((Global_Memory_Info.MemMapDescriptorSize << 1) & EFI_PAGE_MASK)
-              {
-                additional_pages++;
-              }
+              additional_pages = ((Global_Memory_Info.MemMapDescriptorSize << 1) + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT;
             }
             size_t new_numpages = numpages + additional_pages;
 
@@ -1388,11 +1588,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
             }
             else // This may never be necessary, but if it does become needed one day (huge descriptors or something), support is already here.
             {
-              additional_pages = (Global_Memory_Info.MemMapDescriptorSize << 1) >> EFI_PAGE_SHIFT;
-              if((Global_Memory_Info.MemMapDescriptorSize << 1) & EFI_PAGE_MASK)
-              {
-                additional_pages++;
-              }
+              additional_pages = ((Global_Memory_Info.MemMapDescriptorSize << 1) + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT;
             }
             size_t new_numpages = numpages + additional_pages;
 
@@ -1591,11 +1787,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
             }
             else // This may never be necessary, but if it does become needed one day (huge descriptors or something), support is already here.
             {
-              additional_pages = (Global_Memory_Info.MemMapDescriptorSize * 3) >> EFI_PAGE_SHIFT;
-              if((Global_Memory_Info.MemMapDescriptorSize * 3) & EFI_PAGE_MASK)
-              {
-                additional_pages++;
-              }
+              additional_pages = ((Global_Memory_Info.MemMapDescriptorSize * 3) + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT;
             }
             size_t new_numpages = numpages + additional_pages;
 

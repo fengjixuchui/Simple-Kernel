@@ -138,6 +138,7 @@ void Enable_AVX(void)
 
         if((xcr0 & 0x7) == 0x7)
         { // AVX successfully enabled, so we have that.
+//          printf("AVX ON");
           // Now check AVX2 & AVX512
           asm volatile("cpuid"
                        : "=b" (rbx), "=c" (rcx), "=d" (rdx) // Outputs

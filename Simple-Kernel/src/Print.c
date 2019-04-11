@@ -601,7 +601,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 					{
 						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
 					}
-#elif
+#else
 					// Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
 					// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
@@ -679,7 +679,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 						{
 							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
 						}
-#elif
+#else
 						// Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
 						// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
@@ -740,7 +740,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 					{
 						AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
 					}
-#elif
+#else
 					// Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
 					// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 					AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
@@ -811,7 +811,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 							{
 								AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
 							}
-#elif
+#else
 							// Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
 							// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 							AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);
@@ -882,7 +882,7 @@ static void printf_putchar(int output_character, void *arglist) // Character is 
 						{
 							AVX_memset_4B((EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine * 4), arg->background_color, (arg->defaultGPU.Info->VerticalResolution - min_scroll_size) * arg->defaultGPU.Info->PixelsPerScanLine);
 						}
-#elif
+#else
 						// Old way (gap of background color below the bottommost text line, but no partial scroll up top--the topmost line goes away; VerticalResolution % (height * scale) == 0 fonts don't have to worry if all text on screen is the same size)
 						// Qualitative test results: This can scroll a 4K screen framebuffer (31MB) extremely quickly :D (Interestingly enough, the standard memmove in memmove.c can also do it pretty quickly since GCC vectorizes it.)
 						AVX_memmove((EFI_PHYSICAL_ADDRESS*)arg->defaultGPU.FrameBufferBase, (EFI_PHYSICAL_ADDRESS*)(arg->defaultGPU.FrameBufferBase + arg->defaultGPU.Info->PixelsPerScanLine * 4 * arg->height * arg->scale), arg->y * arg->defaultGPU.Info->PixelsPerScanLine*4);

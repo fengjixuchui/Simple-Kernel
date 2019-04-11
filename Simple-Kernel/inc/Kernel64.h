@@ -189,7 +189,7 @@ EFI_STATUS
 
 typedef
 EFI_STATUS
-(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these when kernel starts after System_Init:
+(EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these:
     IN UINTN                        MemoryMapSize,     // LP->Memory_Map_Size
     IN UINTN                        DescriptorSize,    // LP->Memory_Map_Descriptor_Size
     IN UINT32                       DescriptorVersion, // EFI_MEMORY_DESCRIPTOR_VERSION
@@ -344,13 +344,18 @@ typedef struct {
 // GTX1080.Info->HorizontalResolution
 
 typedef struct {
-  UINTN                   Memory_Map_Size;            // The total size of the system memory map
-  UINTN                   Memory_Map_Descriptor_Size; // The size of an individual memory descriptor
-  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                 // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-  EFI_RUNTIME_SERVICES   *RTServices;                 // UEFI Runtime Services
-  GPU_CONFIG             *GPU_Configs;                // Information about available graphics output devices; see below for details
-  EFI_FILE_INFO          *FileMeta;                   // Kernel64 file metadata
-  void                   *RSDP;                       // A pointer to the RSDP ACPI table
+  UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
+  UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
+  EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded Kernel64 file
+  UINTN                   Kernel_Pages;                   // The number of pages allocated for the Kernel64 file
+  UINTN                   Memory_Map_Size;                // The total size of the system memory map
+  UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+  UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
+  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+  EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
+  GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see above for details
+  EFI_FILE_INFO          *FileMeta;                       // Kernel64 file metadata
+  void                   *RSDP;                           // A pointer to the RSDP ACPI table
 } LOADER_PARAMS;
 
 // END UEFI and Bootloader functions, definitions, and declarations
@@ -457,6 +462,8 @@ uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-b
 void print_system_memmap(void);
 EFI_MEMORY_DESCRIPTOR * Set_Identity_VMAP(EFI_RUNTIME_SERVICES * RTServices);
 void Setup_MemMap(void);
+void ReclaimEfiBootServicesMemory(void);
+void MergeContiguousConventionalMemory(void);
 
   // For physical addresses
 __attribute__((malloc)) void * malloc(size_t numbytes);
@@ -467,6 +474,7 @@ __attribute__((malloc)) void * malloc64(size_t numbytes);
 __attribute__((malloc)) void * malloc4k(size_t pages);
 
 EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress);
+EFI_PHYSICAL_ADDRESS ActuallyFreeAddressByPage(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress);
 EFI_PHYSICAL_ADDRESS AllocateFreeAddressByPage(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress);
 EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy16Bytes(size_t numbytes, EFI_PHYSICAL_ADDRESS OldAddress);
 EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy32Bytes(size_t numbytes, EFI_PHYSICAL_ADDRESS OldAddress);
@@ -481,6 +489,7 @@ __attribute__((malloc)) void * Vmalloc64(size_t numbytes);
 __attribute__((malloc)) void * Vmalloc4k(size_t pages);
 
 EFI_VIRTUAL_ADDRESS VActuallyFreeAddress(size_t pages, EFI_VIRTUAL_ADDRESS OldAddress);
+EFI_VIRTUAL_ADDRESS VActuallyFreeAddressByPage(size_t pages, EFI_VIRTUAL_ADDRESS OldAddress);
 EFI_VIRTUAL_ADDRESS VAllocateFreeAddressByPage(size_t pages, EFI_VIRTUAL_ADDRESS OldAddress);
 EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy16Bytes(size_t numbytes, EFI_VIRTUAL_ADDRESS OldAddress);
 EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy32Bytes(size_t numbytes, EFI_VIRTUAL_ADDRESS OldAddress);
