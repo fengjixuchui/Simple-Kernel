@@ -20,15 +20,25 @@
   typedef struct {
     UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
     UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
-    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded Kernel64 file
-    UINTN                   Kernel_Pages;                   // The number of pages allocated for the Kernel64 file
-    UINTN                   Memory_Map_Size;                // The total size of the system memory map
-    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+
     UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
+    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
     EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    UINTN                   Memory_Map_Size;                // The total size of the system memory map
+
+    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded kernel file
+    UINTN                   Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
+
+    CHAR16                 *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
+    UINT64                  ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
+    CHAR16                 *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
+    UINT64                  Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
+    CHAR16                 *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
+    UINT64                  Kernel_Options_Size;            // The size (in bytes) of the above load options string
+
     EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
-    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see below for details
-    EFI_FILE_INFO          *FileMeta;                       // Kernel64 file metadata
+    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see below GPU_CONFIG struct for details
+    EFI_FILE_INFO          *FileMeta;                       // Kernel file metadata
     void                   *RSDP;                           // A pointer to the RSDP ACPI table
   } LOADER_PARAMS;
 */
@@ -153,15 +163,25 @@ static const unsigned char load_image3[144] = {
   typedef struct {
     UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
     UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
-    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded Kernel64 file
-    UINTN                   Kernel_Pages;                   // The number of pages allocated for the Kernel64 file
-    UINTN                   Memory_Map_Size;                // The total size of the system memory map
-    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+
     UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
+    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
     EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    UINTN                   Memory_Map_Size;                // The total size of the system memory map
+
+    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded kernel file
+    UINTN                   Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
+
+    CHAR16                 *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
+    UINT64                  ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
+    CHAR16                 *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
+    UINT64                  Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
+    CHAR16                 *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
+    UINT64                  Kernel_Options_Size;            // The size (in bytes) of the above load options string
+
     EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
-    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see above for details
-    EFI_FILE_INFO          *FileMeta;                       // Kernel64 file metadata
+    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see above GPU_CONFIG struct for details
+    EFI_FILE_INFO          *FileMeta;                       // Kernel file metadata
     void                   *RSDP;                           // A pointer to the RSDP ACPI table
   } LOADER_PARAMS;
 */
@@ -172,13 +192,81 @@ static const unsigned char load_image3[144] = {
 //
 // The main entry point of the kernel/program/OS and what the bootloader hands off to.
 //
+void print_utf16_as_utf8(CHAR16 * strung, UINT64 size);
 
+void print_utf16_as_utf8(CHAR16 * strung, UINT64 size)
+{
+  for(uint64_t letter = 0; letter < size; letter++)
+  {
+    if( ((char*)strung)[letter] != 0x00)
+    {
+      printf("%c", ((char *)strung)[letter]);
+    }
+  }
+}
+/*
+char * UCS2_to_UTF8(CHAR16 * strang, UINT64 size)
+{
+  char * new_strang = malloc(size >> 1);
+  uint8_t zero_count = 0;
+  uint64_t new_letter = 0;
+
+  for(uint64_t letter = 0; letter < size; letter++)
+  {
+    if( ((char*)strang)[letter] != 0x00)
+    {
+      new_strang[new_letter] = ((char*)strang)[letter];
+      new_letter++;
+      zero_count = 0;
+    }
+    else
+    {
+      zero_count++;
+    }
+
+    if(zero_count == 2) // Double 0 is L'\0'
+    {
+      new_strang[new_letter] = '\0';
+    }
+  }
+
+  return new_strang;
+}
+*/
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
   // Now initialize the system (Virtual mappings (identity-map), printf, AVX, any straggling control registers, HWP, maskable interrupts)
   System_Init(LP); // See System.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
 
   // Main Body Start
+
+  printf("Loader_Params check:\r\n Bootloader Version: %hu.%hu\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
+  LP->Bootloader_MajorVersion,
+  LP->Bootloader_MinorVersion,
+
+  LP->Memory_Map_Descriptor_Version,
+  LP->Memory_Map_Descriptor_Size,
+  LP->Memory_Map,
+  LP->Memory_Map_Size,
+
+  LP->Kernel_BaseAddress,
+  LP->Kernel_Pages
+  );
+
+  printf(" ESP Root Path: ");
+  print_utf16_as_utf8(LP->ESP_Root_Device_Path, LP->ESP_Root_Size);
+  printf(", ESP Root Size: %llu\r\n Kernel Path: ", LP->ESP_Root_Size);
+  print_utf16_as_utf8(LP->Kernel_Path, LP->Kernel_Path_Size);
+  printf(", Kernel Path Size: %llu\r\n Kernel Options: ", LP->Kernel_Path_Size);
+  print_utf16_as_utf8(LP->Kernel_Options, LP->Kernel_Options_Size);
+  printf(", Kernel Options Size: %llu\r\n", LP->Kernel_Options_Size);
+
+  printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx, RSDP Addr: %#qx\r\n",
+  LP->RTServices,
+  LP->GPU_Configs,
+  LP->FileMeta,
+  LP->RSDP
+  );
 
   char brandstring[48] = {0};
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.

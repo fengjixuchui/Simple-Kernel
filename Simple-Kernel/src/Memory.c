@@ -1111,7 +1111,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy64Bytes(size_t numbytes, EFI_VIRTUAL_A
 // Calling this function more than once won't do anything other than just waste some CPU time.
 //
 
-void ReclaimEfiBootServicesMemory(void)
+void ReclaimEfiBootServicesMemory(void) // TODO: Reclaim EfiLoaderCode
 {
   EFI_MEMORY_DESCRIPTOR * Piece;
 
