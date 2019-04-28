@@ -977,3 +977,48 @@ int vsprintf(char *buf, const char *cfmt, va_list ap)
 	buf[retval] = '\0';
 	return (retval);
 }
+
+// A print function that's meant to print simple UCS-2 UEFI strings (2 bytes per character) with a 1-byte per character/UTF8 font.
+// Meant to print out CHAR16 strings in the loader params, since printf above doesn't support wide characters.
+void print_utf16_as_utf8(CHAR16 * strung, UINT64 size)
+{
+  for(uint64_t letter = 0; letter < size; letter++)
+  {
+    if( ((char*)strung)[letter] != 0x00)
+    {
+      printf("%c", ((char *)strung)[letter]);
+    }
+  }
+}
+
+// Takes simple CHAR16 UEFI strings and returns a CHAR8 string of the same contents.
+// Meant to work with CHAR16 strings in the loader params, since printf above doesn't support wide characters.
+/*
+char * UCS2_to_UTF8(CHAR16 * strang, UINT64 size) // TODO: need malloc
+{
+  char * new_strang = malloc(size >> 1);
+  uint8_t zero_count = 0;
+  uint64_t new_letter = 0;
+
+  for(uint64_t letter = 0; letter < size; letter++)
+  {
+    if( ((char*)strang)[letter] != 0x00)
+    {
+      new_strang[new_letter] = ((char*)strang)[letter];
+      new_letter++;
+      zero_count = 0;
+    }
+    else
+    {
+      zero_count++;
+    }
+
+    if(zero_count == 2) // Double 0 is L'\0'
+    {
+      new_strang[new_letter] = '\0';
+    }
+  }
+
+  return new_strang;
+}
+*/

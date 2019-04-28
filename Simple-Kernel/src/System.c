@@ -17,6 +17,8 @@
 
 #include "Kernel64.h"
 
+static void cs_update(void);
+
 //----------------------------------------------------------------------------------------------------------------------------------
 // System_Init: Initial Setup
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -30,6 +32,7 @@ void System_Init(LOADER_PARAMS * LP)
   Global_Memory_Info.MemMap = LP->Memory_Map;
   Global_Memory_Info.MemMapSize = LP->Memory_Map_Size;
   Global_Memory_Info.MemMapDescriptorSize = LP->Memory_Map_Descriptor_Size;
+  Global_Memory_Info.MemMapDescriptorVersion = LP->Memory_Map_Descriptor_Version;
   // Apparently some systems won't totally leave you be without setting a virtual address map (https://www.spinics.net/lists/linux-efi/msg14108.html
   // and https://mjg59.dreamwidth.org/3244.html). Well, fine; identity map it now and fuhgetaboutit.
   // This will modify the memory map (but not its size), and set Global_Memory_Info.MemMap.
@@ -62,6 +65,10 @@ void System_Init(LOADER_PARAMS * LP)
   }
 // TODO: print memmap before and after to test
   print_system_memmap();
+
+  // Make a replacement GDT since the UEFI one is in EFI Boot Services Memory.
+  // Don't need anything fancy, just need one to exist somewhere (preferably in EfiLoaderData, which won't change with this software)
+  Setup_MinimalGDT();
 
   // Set up the memory map for use with mallocX (X = 16, 32, 64)
   Setup_MemMap();
@@ -583,10 +590,10 @@ uint8_t Hypervisor_check(void)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-// read_perfs_initial: Measure CPU Performance (Part 1)
+// read_perfs_initial: Measure CPU Performance (Part 1 of 2)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Takes an array of 2x uint64_t, fills first uint with aperf and 2nd with mperf.
+// Takes an array of 2x uint64_t (e.g. uint64_t perfcounters[2] = {1, 1}; ), fills first uint64 with aperf and 2nd with mperf.
 // This will disable maskable interrupts, as it is expected that get_CPU_freq(perfs, 1) is called to process the result and re-enable
 // the interrupts. The functions read_perfs_initial(perfs) and get_CPU_freq(perfs, 1) should sandwich the desired code to measure.
 //
@@ -653,7 +660,7 @@ uint8_t read_perfs_initial(uint64_t * perfs)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-// get_CPU_freq: Measure CPU Performance (Part 2)
+// get_CPU_freq: Measure CPU Performance (Part 2 of 2)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Get CPU frequency in MHz
@@ -826,10 +833,90 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
+// portio_rw: Read/Write I/O Ports
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read from or write to x86 port addresses
+//
+// port_address: address of the port
+// size: 1, 2, or 4 bytes
+// rw: 0 = read, 1 = write
+// input data is ignored on reads
+//
+
+uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw)
+{
+  if(size == 1)
+  {
+    if(rw == 1) // Write
+    {
+      asm volatile("outb %[value], %[address]" // GAS syntax (src, dest) is opposite Intel syntax (dest, src)
+                    : // No outputs
+                    : [value] "a" ((uint8_t)data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+    else // Read
+    {
+      asm volatile("inb %[address], %[value]"
+                    : // No outputs
+                    : [value] "a" ((uint8_t)data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+  }
+  else if(size == 2)
+  {
+    if(rw == 1) // Write
+    {
+      asm volatile("outw %[value], %[address]"
+                    : // No outputs
+                    : [value] "a" ((uint16_t)data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+    else // Read
+    {
+      asm volatile("inw %[address], %[value]"
+                    : // No outputs
+                    : [value] "a" ((uint16_t)data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+  }
+  else if(size == 4)
+  {
+    if(rw == 1) // Write
+    {
+      asm volatile("outl %[value], %[address]"
+                    : // No outputs
+                    : [value] "a" (data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+    else // Read
+    {
+      asm volatile("inl %[address], %[value]"
+                    : // No outputs
+                    : [value] "a" (data), [address] "d" (port_address)
+                    : // No clobbers
+                  );
+    }
+  }
+  else
+  {
+    printf("Invalid port i/o size.\r\n");
+  }
+
+  return data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
 // msr_rw: Read/Write Model-Specific Registers
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read from or write to Model Specific Registers
+//
 // msr: msr address
 // rw: 0 = read, 1 = write
 // input data is ignored for reads
@@ -865,7 +952,8 @@ uint64_t msr_rw(uint64_t msr, uint64_t data, int rw)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read from or write to the MXCSR register (VEX-encoded version)
-// Use this one if using AVX instructions
+// Use this function instead of mxcsr_rw() if using AVX instructions
+//
 // rw: 0 = read, 1 = write
 // input data is ignored for reads
 //
@@ -896,6 +984,7 @@ uint32_t vmxcsr_rw(uint32_t data, int rw)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read from or write to the MXCSR register (Legacy/SSE)
+//
 // rw: 0 = read, 1 = write
 // input data is ignored for reads
 //
@@ -926,6 +1015,7 @@ uint32_t mxcsr_rw(uint32_t data, int rw)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read from or write to the standard system control registers (CR0-CR4 and CR8) and the RFLAGS register
+//
 // crX: an integer specifying which CR (e.g. 0 for CR0, etc.), use 'f' (with single quotes) for RFLAGS
 // in_out: writes this value if rw = 1, input value ignored on reads
 // rw: 0 = read, 1 = write
@@ -1061,6 +1151,7 @@ uint64_t control_register_rw(int crX, uint64_t in_out, int rw) // Read from or w
 //
 // Read from or write to the eXtended Control Registers
 // XCR0 is used to enable AVX/AVX512/SSE extended registers
+//
 // xcrX: an integer for specifying which XCR (0 for XCR0, etc.)
 // rw: 0 = read, 1 = write
 // data is ignored for reads
@@ -1096,7 +1187,7 @@ uint64_t xcr_rw(uint64_t xcrX, uint64_t data, int rw)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read the %CS (code segement) register
-// Useful for checking if in 64-bit mode
+// When used in conjunction with get_gdtr(), this is useful for checking if in 64-bit mode
 //
 
 uint64_t read_cs(void)
@@ -1115,6 +1206,7 @@ uint64_t read_cs(void)
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Read the Global Descriptor Table Register
+//
 // The %CS register contains an index for use with the address retrieved from this, in order to point to which GDT entry is relevant
 // to the current code segment.
 //
@@ -1129,6 +1221,22 @@ DT_STRUCT get_gdtr(void)
          );
 
   return gdtr_data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// set_gdtr: Set Global Descriptor Table Register
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Set the Global Descriptor Table Register
+//
+
+void set_gdtr(DT_STRUCT gdtr_data)
+{
+  asm volatile("lgdt %[src]"
+           : // No outputs
+           : [src] "m" (gdtr_data) // Inputs
+           : // No clobbers
+         );
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1151,81 +1259,248 @@ DT_STRUCT get_idtr(void)
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
-// portio_rw: Read/Write I/O Ports
+// set_idtr: Set Interrupt Descriptor Table Register
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Read from or write to x86 port addresses
-// port_address: address of the port
-// size: 1, 2, or 4 bytes
-// rw: 0 = read, 1 = write
-// input data is ignored on reads
+// Set the Interrupt Descriptor Table Register
 //
 
-uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw)
+void set_idtr(DT_STRUCT idtr_data)
 {
-  if(size == 1)
-  {
-    if(rw == 1) // Write
-    {
-      asm volatile("outb %[value], %[address]" // GAS syntax (src, dest) is opposite Intel syntax (dest, src)
-                    : // No outputs
-                    : [value] "a" ((uint8_t)data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-    else // Read
-    {
-      asm volatile("inb %[address], %[value]"
-                    : // No outputs
-                    : [value] "a" ((uint8_t)data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-  }
-  else if(size == 2)
-  {
-    if(rw == 1) // Write
-    {
-      asm volatile("outw %[value], %[address]"
-                    : // No outputs
-                    : [value] "a" ((uint16_t)data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-    else // Read
-    {
-      asm volatile("inw %[address], %[value]"
-                    : // No outputs
-                    : [value] "a" ((uint16_t)data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-  }
-  else if(size == 4)
-  {
-    if(rw == 1) // Write
-    {
-      asm volatile("outl %[value], %[address]"
-                    : // No outputs
-                    : [value] "a" (data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-    else // Read
-    {
-      asm volatile("inl %[address], %[value]"
-                    : // No outputs
-                    : [value] "a" (data), [address] "d" (port_address)
-                    : // No clobbers
-                  );
-    }
-  }
-  else
-  {
-    printf("Invalid port i/o size.\r\n");
-  }
+  asm volatile("lidt %[src]"
+           : // No outputs
+           : [src] "m" (idtr_data) // Inputs
+           : // No clobbers
+         );
+}
 
-  return data;
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_ldtr: Read Local Descriptor Table Register (Segment Selector)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read the Local Descriptor Table Register (reads segment selector only; the selector points to the LDT entry in the GDT, as this
+// entry contains all the info pertaining to the rest of the LDTR)
+//
+
+uint16_t get_ldtr(void)
+{
+  uint16_t ldtr_data = 0;
+  asm volatile("sldt %[dest]"
+           : [dest] "=m" (ldtr_data) // Outputs
+           : // No inputs
+           : // No clobbers
+         );
+
+  return ldtr_data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// set_ldtr: Set Local Descriptor Table Register (Segment Selector)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Set the Local Descriptor Table Register (reads segment selector only; the selector points to the LDT entry in the GDT, as this
+// entry contains all the info pertaining to the rest of the LDTR). Use this in conjunction with set_gdtr() to describe LDT(s).
+//
+
+void set_ldtr(uint16_t ldtr_data)
+{
+  asm volatile("lldt %[src]"
+           : // No outputs
+           : [src] "m" (ldtr_data) // Inputs
+           : // No clobbers
+         );
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// get_tsr: Read Task State Register (Segment Selector)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Read the Task Register (reads segment selector only; the selector points to the Task State Segment (TSS) entry in the GDT, as this
+// entry contains all the info pertaining to the rest of the TSR)
+//
+
+uint16_t get_tsr(void)
+{
+  uint16_t tsr_data = 0;
+  asm volatile("str %[dest]"
+           : [dest] "=m" (tsr_data) // Outputs
+           : // No inputs
+           : // No clobbers
+         );
+
+  return tsr_data;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// set_tsr: Set Task State Register (Segment Selector)
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Set the Task Register (reads segment selector only; the selector points to the Task State Segment (TSS) entry in the GDT, as this
+// entry contains all the info pertaining to the rest of the TSR). Use this in conjunction with set_gdtr() to describe TSR(s).
+//
+
+void set_tsr(uint16_t tsr_data)
+{
+  asm volatile("ltr %[src]"
+           : // No outputs
+           : [src] "m" (tsr_data) // Inputs
+           : // No clobbers
+         );
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// Setup_MinimalGDT: Set Up a Minimal Global Descriptor Table
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Prepare a minimal GDT for the system and set the Global Descriptor Table Register. UEFI makes a descriptor table and stores it in
+// EFI Boot Services memory. Making a static table embedded in the executable itself will ensure a valid GDT is always in EfiLoaderData
+// and won't get reclaimed as free memory.
+//
+// The cs_update() function is part of this GDT set up process, and it is used to update the %CS sgement selector in addition to the
+// %DS, %ES, %FS, %GS, and %SS selectors.
+//
+
+// This is the whole GDT. See the commented code in Setup_MinimalGDT() for specific details.
+static uint64_t MinimalGDT[5] = {0, 0x00af9a000000ffff, 0x00cf92000000ffff, 0x0080890000000067, 0};
+static volatile TSS64_STRUCT tss64 = {0}; // This is static, so this structure can only be read by functions defined in this .c file
+
+void Setup_MinimalGDT(void)
+{
+  DT_STRUCT gdt_reg_data = {0};
+  uint64_t tss64_addr = (uint64_t)&tss64;
+
+  uint16_t tss64_base1 = (uint16_t)tss64_addr;
+  uint8_t  tss64_base2 = (uint8_t)(tss64_addr >> 16);
+  uint8_t  tss64_base3 = (uint8_t)(tss64_addr >> 24);
+  uint32_t tss64_base4 = (uint32_t)(tss64_addr >> 32);
+
+  printf("TSS Addr check: %#qx, %#hx, %#hhx, %#hhx, %#x\r\n", tss64_addr, tss64_base1, tss64_base2, tss64_base3, tss64_base4);
+
+  gdt_reg_data.Limit = sizeof(MinimalGDT) - 1;
+  // By having MinimalGDT global, the pointer will be in EfiLoaderData.
+  gdt_reg_data.BaseAddress = (uint64_t)MinimalGDT;
+
+/* // The below code was originally written for GDT_ENTRY_STRUCT MinimalGDT[] instead of the static array above, and is left here to explain each entry's values
+  // 4 entries: Null, code, data, TSS
+
+  // Null
+  ((uint64_t*)MinimalGDT)[0] = 0;
+
+  // x86-64 Code (64-bit code segment)
+  MinimalGDT[1].SegmentLimit1 = 0xffff;
+  MinimalGDT[1].BaseAddress1 = 0;
+  MinimalGDT[1].BaseAddress2 = 0;
+  MinimalGDT[1].Misc1 = 0x9a; // P=1, DPL=0, S=1, Exec/Read
+  MinimalGDT[1].SegmentLimit2andMisc2 = 0xaf; // G=1, D=0, L=1, AVL=0
+  MinimalGDT[1].BaseAddress3 = 0;
+  // Note the 'L' bit is specifically for x86-64 code segments, not data segments
+  // Data segments need the 32-bit treatment instead
+
+  // x86-64 Data (64- & 32-bit data segment)
+  MinimalGDT[2].SegmentLimit1 = 0xffff;
+  MinimalGDT[2].BaseAddress1 = 0;
+  MinimalGDT[2].BaseAddress2 = 0;
+  MinimalGDT[2].Misc1 = 0x92; // P=1, DPL=0, S=1, Read/Write
+  MinimalGDT[2].SegmentLimit2andMisc2 = 0xcf; // G=1, D=1, L=0, AVL=0
+  MinimalGDT[2].BaseAddress3 = 0;
+
+  // Task Segment Entry (64-bit needs one, even though task-switching isn't supported)
+  MinimalGDT[3].SegmentLimit1 = 0x67; // TSS struct is 104 bytes, so limit is 103 (0x67)
+  MinimalGDT[3].BaseAddress1 = tss64_base1;
+  MinimalGDT[3].BaseAddress2 = tss64_base2;
+  MinimalGDT[3].Misc1 = 0x89; // P=1, DPL=0, S=0, TSS Type
+  MinimalGDT[3].SegmentLimit2andMisc2 = 0x80; // G=1, D=0, L=0, AVL=0
+  MinimalGDT[3].BaseAddress3 = tss64_base3;
+  ((uint64_t*)MinimalGDT)[4] = (uint64_t)tss64_base4; // TSS is a double-sized entry
+*/
+  // The only non-constant in the GDT is the base address of the TSS struct. So let's add it in.
+  ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress1 = tss64_base1;
+  ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress2 = tss64_base2;
+  ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress3 = tss64_base3;
+  ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress4 = tss64_base4; // TSS is a double-sized entry
+  // Dang that looks pretty nuts.
+
+  printf("MinimalGDT: %#qx : %#qx, %#qx, %#qx, %#qx, %#qx ; reg_data: %#qx, Limit: %hu\r\n", (uint64_t)MinimalGDT, ((uint64_t*)MinimalGDT)[0], ((uint64_t*)MinimalGDT)[1], ((uint64_t*)MinimalGDT)[2], ((uint64_t*)MinimalGDT)[3], ((uint64_t*)MinimalGDT)[4], gdt_reg_data.BaseAddress, gdt_reg_data.Limit);
+  set_gdtr(gdt_reg_data);
+  set_tsr(0x18); // TSS segment is at index 3, and 0x18 >> 3 is 3. 0x18 is 24 in decimal.
+  cs_update();
+}
+
+// This is the opcode for "retq" on x86/x86-64 -- GCC just calls it 'ret', clang calls it 'retq'
+// Whatever you call it, it's the 64-bit ret on x86.
+static const uint64_t ret_data = 0xC3;
+
+// See the bottom of this function for details about what exactly it's doing
+static void cs_update(void)
+{
+  // Code segment is at index 1, and 0x08 >> 3 is 1. 0x08 is 8 in decimal.
+  // Data segment is at index 2, and 0x10 >> 3 is 2. 0x10 is 16 in decimal.
+
+  asm volatile("mov $16, %%ax \n\t"
+               "mov %%ax, %%ds \n\t"
+               "mov %%ax, %%es \n\t"
+               "mov %%ax, %%fs \n\t"
+               "mov %%ax, %%gs \n\t"
+               "mov %%ax, %%ss \n\t"
+               "mov $8, %%rdx \n\t"
+               "leaq %[update_cs], %%rax \n\t"
+               "pushq %%rdx \n\t"
+               "pushq %%rax \n\t"
+               "lretq \n\t" // lretq and retfq are the same.
+               // lretq is supported by both GCC and Clang, while retfq works only with GCC. Either way, little endian opcode is 0x48CB.
+               : // No outputs
+               : [update_cs] "m" (ret_data)// Inputs
+               : // No clobbers
+              );
+
+  //
+  // NOTE: Yes, this function is more than a little weird.
+  //
+  // cs_update() will have a dangling 'ret'/'retq' after 'retfq'/'lretq'. It's fine, though, because
+  // "ret_data" contains a hardcoded 'retq' to replace it. Manipulating 'retfq' to go to the right
+  // place doesn't work any other way because 'leaq' will load a borked address into RAX when using
+  // asm labels--specifically it will load an address relative to the kernel image base in such a
+  // way that it won't get relocated by a loader. Mysterious crashes ensue.
+  //
+  // That stated, I think the insanity here speaks for itself, especially since this is all *necessary*
+  // to modify the CS register in 64-bit mode using 'retfq'. Far jumps in 64-bit mode are more
+  // dangerous and not well supported (also syntactically annoying), as are far calls. So we just
+  // have to deal with making farquad returns behave in a very controlled manner... including any
+  // resulting movie references from 2001. But hey, it works, and it shouldn't cause issues with
+  // kernels loaded above 4GB RAM.
+  //
+  // The only issue with this method really is it'll screw up CPU prediction for a tiny bit (for a small
+  // number of subsequent function calls, then it fixes itself). Only need this nonsense once, though!
+  //
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// Setup_IDT: Set Up Interrupt Descriptor Table
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// UEFI makes its own IDT in Boot Services Memory, but it's not super useful outside of what it needed interrupts for (and boot
+// services memory is supposed to be freeable memory after ExitBootServices() is called). This function sets up an interrupt table for
+// more intricate use, as a properly set up IDT is necessary in order to use interrupts. x86(-64) is a highly interrrupt-driven
+// architecture, so this is a pretty important step.
+//
+
+void Setup_IDT(void)
+{
+
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// Setup_Paging: Set Up Paging Structures
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// UEFI sets up paging structures in EFI Boot Services Memory. Since that memory is to be reclaimed as free memory, there needs to be
+// valid paging structures elsewhere doing the job. This function takes care of that and sets up paging structures, ensuring that UEFI
+// data is not relied on.
+//
+
+void Setup_Paging(void)
+{
+  //TODO, can reclaim bootsrvdata after [_] this, [V] GDT, and [_] IDT
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------

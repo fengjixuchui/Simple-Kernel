@@ -192,47 +192,7 @@ static const unsigned char load_image3[144] = {
 //
 // The main entry point of the kernel/program/OS and what the bootloader hands off to.
 //
-void print_utf16_as_utf8(CHAR16 * strung, UINT64 size);
 
-void print_utf16_as_utf8(CHAR16 * strung, UINT64 size)
-{
-  for(uint64_t letter = 0; letter < size; letter++)
-  {
-    if( ((char*)strung)[letter] != 0x00)
-    {
-      printf("%c", ((char *)strung)[letter]);
-    }
-  }
-}
-/*
-char * UCS2_to_UTF8(CHAR16 * strang, UINT64 size)
-{
-  char * new_strang = malloc(size >> 1);
-  uint8_t zero_count = 0;
-  uint64_t new_letter = 0;
-
-  for(uint64_t letter = 0; letter < size; letter++)
-  {
-    if( ((char*)strang)[letter] != 0x00)
-    {
-      new_strang[new_letter] = ((char*)strang)[letter];
-      new_letter++;
-      zero_count = 0;
-    }
-    else
-    {
-      zero_count++;
-    }
-
-    if(zero_count == 2) // Double 0 is L'\0'
-    {
-      new_strang[new_letter] = '\0';
-    }
-  }
-
-  return new_strang;
-}
-*/
 void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
   // Now initialize the system (Virtual mappings (identity-map), printf, AVX, any straggling control registers, HWP, maskable interrupts)
@@ -240,33 +200,20 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 
   // Main Body Start
 
-  printf("Loader_Params check:\r\n Bootloader Version: %hu.%hu\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
-  LP->Bootloader_MajorVersion,
-  LP->Bootloader_MinorVersion,
+  unsigned char swapped_image[sizeof(load_image2)] = {0}; // Local arrays are undefined until set.
 
-  LP->Memory_Map_Descriptor_Version,
-  LP->Memory_Map_Descriptor_Size,
-  LP->Memory_Map,
-  LP->Memory_Map_Size,
+//  bitmap_bitswap(load_image, 12, 27, swapped_image);
+//  char swapped_image2[sizeof(load_image)];
+//  bitmap_bytemirror(swapped_image, 12, 27, swapped_image2);
+  bitmap_bitreverse(load_image2, 24, 27, swapped_image);
+  for(UINT64 k = 0; k < LP->GPU_Configs->NumberOfFrameBuffers; k++) // Multi-GPU support!
+  {
+    bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
+  }
 
-  LP->Kernel_BaseAddress,
-  LP->Kernel_Pages
-  );
 
-  printf(" ESP Root Path: ");
-  print_utf16_as_utf8(LP->ESP_Root_Device_Path, LP->ESP_Root_Size);
-  printf(", ESP Root Size: %llu\r\n Kernel Path: ", LP->ESP_Root_Size);
-  print_utf16_as_utf8(LP->Kernel_Path, LP->Kernel_Path_Size);
-  printf(", Kernel Path Size: %llu\r\n Kernel Options: ", LP->Kernel_Path_Size);
-  print_utf16_as_utf8(LP->Kernel_Options, LP->Kernel_Options_Size);
-  printf(", Kernel Options Size: %llu\r\n", LP->Kernel_Options_Size);
-
-  printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx, RSDP Addr: %#qx\r\n",
-  LP->RTServices,
-  LP->GPU_Configs,
-  LP->FileMeta,
-  LP->RSDP
-  );
+  Print_Loader_Params(LP);
+  Print_Segment_Registers();
 
   char brandstring[48] = {0};
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
@@ -275,10 +222,6 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   char Manufacturer_ID[13] = {0};
   Get_Manufacturer_ID(Manufacturer_ID); // Returns a char* pointer to Manufacturer_ID. Don't need it here, though.
   printf("%s\r\n\n", Manufacturer_ID);
-
-
-  DT_STRUCT idt = get_idtr(); // IDT can have up to 256 interrupt descriptors to account for. (IRQs 16-255 can be handled by APIC, 0-255 can be handled by INTR pin)
-  printf("IDTR addr: %#qx, limit: %#hx\r\n", idt.BaseAddress, idt.Limit);
 
   print_system_memmap();
 /*
@@ -301,17 +244,6 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   printf("Avg CPU freq: %qu\r\n", get_CPU_freq(NULL, 0));
   printf("\r\n\r\n");
 */
-
-  unsigned char swapped_image[sizeof(load_image2)] = {0}; // Local arrays are undefined until set.
-
-//  bitmap_bitswap(load_image, 12, 27, swapped_image);
-//  char swapped_image2[sizeof(load_image)];
-//  bitmap_bytemirror(swapped_image, 12, 27, swapped_image2);
-  bitmap_bitreverse(load_image2, 24, 27, swapped_image);
-  for(UINT64 k = 0; k < LP->GPU_Configs->NumberOfFrameBuffers; k++) // Multi-GPU support!
-  {
-    bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
-  }
 
 //  Print_All_CRs_and_Some_Major_CPU_Features(); // The output from this will fill up a 768 vertical resolution screen with an 8 height font set to scale factor 1.
 
@@ -631,16 +563,82 @@ void Print_All_CRs_and_Some_Major_CPU_Features(void)
   }
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Print_Loader_Params: Print Loader Parameter Block Values
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Prints the values and addresses contained within the loader parameter block
+//
+
+void Print_Loader_Params(LOADER_PARAMS * LP)
+{
+  printf("Loader_Params check:\r\n Bootloader Version: %hu.%hu\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
+  LP->Bootloader_MajorVersion,
+  LP->Bootloader_MinorVersion,
+
+  LP->Memory_Map_Descriptor_Version,
+  LP->Memory_Map_Descriptor_Size,
+  LP->Memory_Map,
+  LP->Memory_Map_Size,
+
+  LP->Kernel_BaseAddress,
+  LP->Kernel_Pages
+  );
+
+  printf(" ESP Root Path: ");
+  print_utf16_as_utf8(LP->ESP_Root_Device_Path, LP->ESP_Root_Size);
+  printf(", ESP Root Size: %llu\r\n Kernel Path: ", LP->ESP_Root_Size);
+  print_utf16_as_utf8(LP->Kernel_Path, LP->Kernel_Path_Size);
+  printf(", Kernel Path Size: %llu\r\n Kernel Options: ", LP->Kernel_Path_Size);
+  print_utf16_as_utf8(LP->Kernel_Options, LP->Kernel_Options_Size);
+  printf(", Kernel Options Size: %llu\r\n", LP->Kernel_Options_Size);
+
+  printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx, RSDP Addr: %#qx\r\n",
+  LP->RTServices,
+  LP->GPU_Configs,
+  LP->FileMeta,
+  LP->RSDP
+  );
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// Print_Segment_Registers: Print Segment Register Values
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Prints the values and addresses contained within the segment registers (GDTR, IDTR, LDTR, TSR)
+//
+
+void Print_Segment_Registers(void)
+{
+  uint64_t cr3 = control_register_rw(3, 0, 0);
+  printf("CR3: %#qx\r\n", cr3);
+
+  DT_STRUCT gdt = get_gdtr();
+  printf("GDTR addr: %#qx, limit: %#hx\r\n", gdt.BaseAddress, gdt.Limit);
+
+  DT_STRUCT idt = get_idtr(); // IDT can have up to 256 interrupt descriptors to account for. (IRQs 16-255 can be handled by APIC, 0-255 can be handled by INTR pin)
+  printf("IDTR addr: %#qx, limit: %#hx\r\n", idt.BaseAddress, idt.Limit);
+
+  uint16_t ldt_ss = get_ldtr();
+  printf("LDTR Seg Sel: %#hx\r\n", ldt_ss);
+
+  uint16_t tsr_ss = get_tsr();
+  printf("TSR Seg Sel: %#hx\r\n", tsr_ss);
+
+  uint64_t cs = read_cs();
+  printf("CS: %#qx\r\n", cs);
+}
+
 // Why does "general-regs-only" not work?
 /*
 // Interrupt handler
-__attribute__ ((interrupt, target("no-sse,no-mmx,no-3dnow,no-fp-ret-in-387"))) void IRQ_Handler(INTERRUPT_FRAME * frame)
+__attribute__ ((interrupt, target("general-regs-only"))) void IRQ_Handler(INTERRUPT_FRAME * frame)
 {
 
 }
 
 // Exception handler
-__attribute__ ((interrupt, target("no-sse,no-mmx,no-3dnow,no-fp-ret-in-387"))) void Exception_Handler(INTERRUPT_FRAME * frame, uint64_t error_code)
+__attribute__ ((interrupt, target("general-regs-only"))) void Exception_Handler(INTERRUPT_FRAME * frame, uint64_t error_code)
 {
 
 }

@@ -192,7 +192,7 @@ EFI_STATUS
 (EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these:
     IN UINTN                        MemoryMapSize,     // LP->Memory_Map_Size
     IN UINTN                        DescriptorSize,    // LP->Memory_Map_Descriptor_Size
-    IN UINT32                       DescriptorVersion, // EFI_MEMORY_DESCRIPTOR_VERSION
+    IN UINT32                       DescriptorVersion, // LP->Memory_Map_Descriptor_Version
     IN EFI_MEMORY_DESCRIPTOR        *VirtualMap        // LP->Memory_Map
     );
 
@@ -384,9 +384,11 @@ typedef struct {
 
 // For memory functions, like malloc and friends in Memory.c
 typedef struct {
-  UINTN                   MemMapSize;           // Size of the memory map (LP->Memory_Map_Size)
-  UINTN                   MemMapDescriptorSize; // Size of memory map descriptors (LP->Memory_Map_Descriptor_Size)
-  EFI_MEMORY_DESCRIPTOR  *MemMap;               // Pointer to memory map (LP->Memory_Map)
+  UINTN                   MemMapSize;              // Size of the memory map (LP->Memory_Map_Size)
+  UINTN                   MemMapDescriptorSize;    // Size of memory map descriptors (LP->Memory_Map_Descriptor_Size)
+  EFI_MEMORY_DESCRIPTOR  *MemMap;                  // Pointer to memory map (LP->Memory_Map)
+  UINT32                  MemMapDescriptorVersion; // Memory map descriptor version
+  UINT32                  Pad;                     // Pad to multiple of 64 bits
 } GLOBAL_MEMORY_INFO_STRUCT;
 
 GLOBAL_MEMORY_INFO_STRUCT Global_Memory_Info;
@@ -412,17 +414,83 @@ GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
 typedef struct __attribute__ ((packed)) {
   UINT16 Limit; // Limit + 1 = size, since limit + base = the last valid address
   UINT64 BaseAddress;
-} DT_STRUCT; // GDT, IDT, LDT all use this format
+} DT_STRUCT; // GDT and IDT use this format
 
 // Intel Architecture Manual Vol. 3A, Fig. 3-8 (Segment Descriptor)
 typedef struct __attribute__ ((packed)) {
-  UINT16 SegmentLimit1; // Low bits, SegmentLimit2andMisc has MSBs (it's a 20-bit value)
-  UINT16 BaseAddress1; // Low bits
-  UINT8  BaseAddress2; // Next bits
+  UINT16 SegmentLimit1; // Low bits, SegmentLimit2andMisc2 has MSBs (it's a 20-bit value)
+  UINT16 BaseAddress1; // Low bits (15:0)
+  UINT8  BaseAddress2; // Next bits (23:16)
   UINT8  Misc1; // Bits 0-3: segment/gate Type, 4: S, 5-6: DPL, 7: P
   UINT8  SegmentLimit2andMisc2; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
-  UINT8  BaseAddress3; // Most significant bits
+  UINT8  BaseAddress3; // Most significant bits (31:24)
 } GDT_ENTRY_STRUCT; // This whole struct can fit in a 64-bit int. Printf %lx could give the whole thing.
+
+typedef struct __attribute__ ((packed)) {
+  UINT16 SegmentLimit1; // Low bits, SegmentLimit2andMisc2 has MSBs (it's a 20-bit value)
+  UINT16 BaseAddress1; // Low bits (15:0)
+  UINT8  BaseAddress2; // Next bits (23:16)
+  UINT8  Misc1; // Bits 0-3: segment/gate Type, 4: S, 5-6: DPL, 7: P
+  UINT8  SegmentLimit2andMisc2; // Bits 0-3: seglimit2, 4: Available, 5: L, 6: D/B, 7: G
+  UINT8  BaseAddress3; // More significant bits (31:24)
+  UINT32 BaseAddress4; // Most significant bits (63:32)
+  UINT8  Reserved;
+  UINT8  Misc3andReserved2; // Low 4 bits are 0, upper 4 bits are reserved
+  UINT16 Reserved3;
+} TSS_LDT_ENTRY_STRUCT; // TSS and LDT use this
+
+// Intel Architecture Manual Vol. 3A, Fig. 5-9 (Call-Gate Descriptor in IA-32e mode)
+typedef struct __attribute__ ((packed)) {
+  UINT16 SegmentOffset1; // Low bits (15:0)
+  UINT16 SegmentSelector;
+  UINT8  Zero; // Should be set to all 0
+  UINT8  Misc1; // Bits 0-3: segment/gate Type (1100), 4: S (set to 0), 5-6: DPL, 7: P
+  UINT16 SegmentOffset2; // Middle bits (31:16)
+  UINT32 SegmentOffset3; // Most significant bits (63:32)
+  UINT8  Reserved;
+  UINT8  Misc2andReserved2; // Low 5 bits should be 0, upper 3 bits are reserved
+  UINT16 Reserved3;
+} CALL_GATE_ENTRY_STRUCT;
+// Call gates aren't needed if privilege level doesn't change and if not switching out of 64-bit mode
+// This software stays in privilege level 0 (ring 0) and 64-bit mode, so call gates aren't used
+
+// Intel Architecture Manual Vol. 3A, Fig. 7-11 (64-Bit TSS Format)
+typedef struct __attribute__ ((packed)) {
+  UINT32 Reserved_0;
+  // RSP values for privilege levels 0-2
+  UINT32 RSP_0_low;
+  UINT32 RSP_0_high;
+  UINT32 RSP_1_low;
+  UINT32 RSP_1_high;
+  UINT32 RSP_2_low;
+  UINT32 RSP_2_high;
+
+  UINT32 Reserved_1;
+  UINT32 Reserved_2;
+  // Interrupt Stack Table pointers
+  UINT32 IST_1_low;
+  UINT32 IST_1_high;
+  UINT32 IST_2_low;
+  UINT32 IST_2_high;
+  UINT32 IST_3_low;
+  UINT32 IST_3_high;
+  UINT32 IST_4_low;
+  UINT32 IST_4_high;
+  UINT32 IST_5_low;
+  UINT32 IST_5_high;
+  UINT32 IST_6_low;
+  UINT32 IST_6_high;
+  UINT32 IST_7_low;
+  UINT32 IST_7_high;
+
+  UINT32 Reserved_3;
+  UINT32 Reserved_4;
+
+  UINT16 Reserved_5;
+  UINT16 IO_Map_Base; // 16-bit offset to I/O permission bit map, relative to 64-bit TSS base (i.e. base of this struct)
+} TSS64_STRUCT;
+
+// TODO: Trap/task/interrupt gate for x64
 
 // Intel Architecture Manual Vol. 3A, Fig. 6-8
 // Note the order of this frame with respect to the stack.
@@ -451,21 +519,36 @@ void Enable_HWP(void);
 uint8_t Hypervisor_check(void);
 uint8_t read_perfs_initial(uint64_t * perfs);
 uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure);
+
+uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
 uint64_t msr_rw(uint64_t msr, uint64_t data, int rw);
 uint32_t vmxcsr_rw(uint32_t data, int rw);
 uint32_t mxcsr_rw(uint32_t data, int rw);
 uint64_t control_register_rw(int crX, uint64_t in_out, int rw);
 uint64_t xcr_rw(uint64_t xcrX, uint64_t data, int rw);
 uint64_t read_cs(void);
+
 DT_STRUCT get_gdtr(void);
+void set_gdtr(DT_STRUCT gdtr_data);
 DT_STRUCT get_idtr(void);
-uint32_t portio_rw(uint16_t port_address, uint32_t data, int size, int rw);
+void set_idtr(DT_STRUCT idtr_data);
+uint16_t get_ldtr(void);
+void set_ldtr(uint16_t ldtr_data);
+uint16_t get_tsr(void);
+void set_tsr(uint16_t tsr_data);
+
+void Setup_MinimalGDT(void);
+void Setup_IDT(void);
+void Setup_Paging(void);
+
 char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
 char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
-// NOTE: Not in System.c, this function is in Kernel64.c.
+// NOTE: Not in System.c, these functions are in Kernel64.c.
 void Print_All_CRs_and_Some_Major_CPU_Features(void);
+void Print_Loader_Params(LOADER_PARAMS * LP);
+void Print_Segment_Registers(void);
 
 // Memory-related functions (Memory.c)
 uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-bit unsigned int whose value is the memory address to verify
@@ -473,6 +556,7 @@ void print_system_memmap(void);
 EFI_MEMORY_DESCRIPTOR * Set_Identity_VMAP(EFI_RUNTIME_SERVICES * RTServices);
 void Setup_MemMap(void);
 void ReclaimEfiBootServicesMemory(void);
+void ReclaimEfiLoaderCodeMemory(void);
 void MergeContiguousConventionalMemory(void);
 
   // For physical addresses
@@ -542,6 +626,9 @@ int vsprintf(char *buf, const char *cfmt, va_list ap);
 int printf(const char *fmt, ...);
 int vprintf(const char *fmt, va_list ap);
 int kvprintf(char const *fmt, void (*func)(int, void*), void *arg, int radix, va_list ap);
+
+void print_utf16_as_utf8(CHAR16 * strung, UINT64 size);
+char * UCS2_to_UTF8(CHAR16 * strang, UINT64 size);
 
 // Don't remove this #endif
 #endif /* _Kernel64_H */

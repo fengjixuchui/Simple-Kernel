@@ -241,7 +241,7 @@ void print_system_memmap(void)
   EFI_MEMORY_DESCRIPTOR * Piece;
   uint16_t line = 0;
 
-  printf("MemMap %#qx, MemMapSize: %qu, MemMapDescriptorSize: %qu\r\n", Global_Memory_Info.MemMap, Global_Memory_Info.MemMapSize, Global_Memory_Info.MemMapDescriptorSize);
+  printf("MemMap %#qx, MemMapSize: %qu, MemMapDescriptorSize: %qu, MemMapDescriptorVersion: %u\r\n", Global_Memory_Info.MemMap, Global_Memory_Info.MemMapSize, Global_Memory_Info.MemMapDescriptorSize, Global_Memory_Info.MemMapDescriptorVersion);
 
   // Multiply NumOfPages by EFI_PAGE_SIZE or do (NumOfPages << EFI_PAGE_SHIFT) to get the end address... which should just be the start of the next section.
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
@@ -274,7 +274,7 @@ EFI_MEMORY_DESCRIPTOR * Set_Identity_VMAP(EFI_RUNTIME_SERVICES * RTServices)
     Piece->VirtualStart = Piece->PhysicalStart;
   }
 
-  if(EFI_ERROR(RTServices->SetVirtualAddressMap(Global_Memory_Info.MemMapSize, Global_Memory_Info.MemMapDescriptorSize, EFI_MEMORY_DESCRIPTOR_VERSION, Global_Memory_Info.MemMap)))
+  if(EFI_ERROR(RTServices->SetVirtualAddressMap(Global_Memory_Info.MemMapSize, Global_Memory_Info.MemMapDescriptorSize, Global_Memory_Info.MemMapDescriptorVersion, Global_Memory_Info.MemMap)))
   {
 //    printf("Error setting VMAP. Returning NULL.\r\n");
     return NULL;
@@ -325,7 +325,7 @@ void Setup_MemMap(void)
       }
 
       /*
-      // This commented-out code would be used instead of the above conditional if, for some reason, the map is situated not at the PhysicalStart boundary.
+      // This commented-out code would be used instead of the above conditional if, for some reason, the new map is situated not at the PhysicalStart boundary.
       if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= numpages)) // The new map's in EfiConventionalMemory
       {
         EFI_PHYSICAL_ADDRESS PhysicalEnd = Piece->PhysicalStart + (Piece->NumberOfPages << EFI_PAGE_SHIFT); // Get the end of this range for bounds checking (this value might be the start address of the next range)
@@ -342,7 +342,8 @@ void Setup_MemMap(void)
       */
 
     }
-    if((uint8_t*)Piece == ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize))
+
+    if((uint8_t*)Piece == ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize)) // This will be true if the loop didn't break
     {
       printf("MemMap not found.\r\n");
     }
@@ -388,6 +389,8 @@ void Setup_MemMap(void)
       // Done modifying new map.
 
       // TODO: Call mergecontiguousconventionalmemory here or something
+      ReclaimEfiBootServicesMemory();
+      // MergeContiguousConventionalMemory();
       // Each allocate function should call an update memmap with address, size, memtype
       // Every free call should contain a call to mergecontiguousconventionalmemory
     }
@@ -1111,7 +1114,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy64Bytes(size_t numbytes, EFI_VIRTUAL_A
 // Calling this function more than once won't do anything other than just waste some CPU time.
 //
 
-void ReclaimEfiBootServicesMemory(void) // TODO: Reclaim EfiLoaderCode
+void ReclaimEfiBootServicesMemory(void)
 {
   EFI_MEMORY_DESCRIPTOR * Piece;
 
@@ -1128,10 +1131,37 @@ void ReclaimEfiBootServicesMemory(void) // TODO: Reclaim EfiLoaderCode
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
+//  ReclaimEfiLoaderCodeMemory: Convert EfiLoaderCode to EfiConventionalMemory
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// After calling ExitBootServices(), it is up to the OS to decide what to do with EfiLoaderCode (and EfiLoaderData, though that's
+// used to store all the Loader Params that this kernel actively uses). This function reclaims that memory as free.
+//
+// Calling this function more than once won't do anything other than just waste some CPU time.
+//
+
+void ReclaimEfiLoaderCodeMemory(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+
+  // Check for Loader Code (the boot loader that booted this kernel) leftovers in the map
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if(Piece->Type == EfiLoaderCode)
+    {
+      Piece->Type = EfiConventionalMemory; // Convert to EfiConventionalMemory
+    }
+  }
+  // Done.
+  // TODO: call mergecontiguousconventionalmemory
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
 //  MergeContiguousConventionalMemory: Merge Adjacent EfiConventionalMemory Entries
 //----------------------------------------------------------------------------------------------------------------------------------
 //
 // Merge adjacent EfiConventionalMemory locations that are listed as separate entries. This can only work with physical addresses.
+// It's main uses are during calls to free() and Setup_MemMap(), where this function acts to clean up the memory map.
 //
 // This function also contains the logic necessary to shrink the memory map's own descriptor to reclaim extra space.
 //
