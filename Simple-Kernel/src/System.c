@@ -18,6 +18,10 @@
 #include "Kernel64.h"
 
 static void cs_update(void);
+static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr);
+static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr);
+static void set_unused_ISR(uint64_t isr_num);
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // System_Init: Initial Setup
@@ -69,6 +73,9 @@ void System_Init(LOADER_PARAMS * LP)
   // Make a replacement GDT since the UEFI one is in EFI Boot Services Memory.
   // Don't need anything fancy, just need one to exist somewhere (preferably in EfiLoaderData, which won't change with this software)
   Setup_MinimalGDT();
+
+  // Set up IDT for interrupts
+  Setup_IDT();
 
   // Set up the memory map for use with mallocX (X = 16, 32, 64)
   Setup_MemMap();
@@ -489,10 +496,6 @@ void Enable_AVX(void)
 
 void Enable_Maskable_Interrupts(void)
 {
-
-  // TODO: load interrupt handler table
-
-
   uint64_t rflags = control_register_rw('f', 0, 0);
   if(rflags & (1 << 9))
   {
@@ -1374,7 +1377,7 @@ void Setup_MinimalGDT(void)
   uint8_t  tss64_base3 = (uint8_t)(tss64_addr >> 24);
   uint32_t tss64_base4 = (uint32_t)(tss64_addr >> 32);
 
-  printf("TSS Addr check: %#qx, %#hx, %#hhx, %#hhx, %#x\r\n", tss64_addr, tss64_base1, tss64_base2, tss64_base3, tss64_base4);
+//  printf("TSS Addr check: %#qx, %#hx, %#hhx, %#hhx, %#x\r\n", tss64_addr, tss64_base1, tss64_base2, tss64_base3, tss64_base4);
 
   gdt_reg_data.Limit = sizeof(MinimalGDT) - 1;
   // By having MinimalGDT global, the pointer will be in EfiLoaderData.
@@ -1420,34 +1423,36 @@ void Setup_MinimalGDT(void)
   ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress4 = tss64_base4; // TSS is a double-sized entry
   // Dang that looks pretty nuts.
 
-  printf("MinimalGDT: %#qx : %#qx, %#qx, %#qx, %#qx, %#qx ; reg_data: %#qx, Limit: %hu\r\n", (uint64_t)MinimalGDT, ((uint64_t*)MinimalGDT)[0], ((uint64_t*)MinimalGDT)[1], ((uint64_t*)MinimalGDT)[2], ((uint64_t*)MinimalGDT)[3], ((uint64_t*)MinimalGDT)[4], gdt_reg_data.BaseAddress, gdt_reg_data.Limit);
+//  printf("MinimalGDT: %#qx : %#qx, %#qx, %#qx, %#qx, %#qx ; reg_data: %#qx, Limit: %hu\r\n", (uint64_t)MinimalGDT, ((uint64_t*)MinimalGDT)[0], ((uint64_t*)MinimalGDT)[1], ((uint64_t*)MinimalGDT)[2], ((uint64_t*)MinimalGDT)[3], ((uint64_t*)MinimalGDT)[4], gdt_reg_data.BaseAddress, gdt_reg_data.Limit);
   set_gdtr(gdt_reg_data);
   set_tsr(0x18); // TSS segment is at index 3, and 0x18 >> 3 is 3. 0x18 is 24 in decimal.
   cs_update();
 }
 
-// This is the opcode for "retq" on x86/x86-64 -- GCC just calls it 'ret', clang calls it 'retq'
-// Whatever you call it, it's the 64-bit ret on x86.
-static const uint64_t ret_data = 0xC3;
+static const uint64_t ret_data = 0xE1FF; // "jmp *%rcx", flipped for little endian -- this jumps to the address stored in %rcx
+// static const uint64_t ret_data = 0xC3;
+// This also works (0xC3 is 'retq'), provided that there is no ASM code emitted between the end of the asm block and the end of the cs_update() function
+// (true of GCC -O3, for example, but not GCC -O0). Better & safer to use the jump to an address stored in %rcx. Thankfully x86 is little endian only.
 
 // See the bottom of this function for details about what exactly it's doing
 static void cs_update(void)
 {
   // Code segment is at index 1, and 0x08 >> 3 is 1. 0x08 is 8 in decimal.
   // Data segment is at index 2, and 0x10 >> 3 is 2. 0x10 is 16 in decimal.
-
   asm volatile("mov $16, %%ax \n\t"
                "mov %%ax, %%ds \n\t"
                "mov %%ax, %%es \n\t"
                "mov %%ax, %%fs \n\t"
                "mov %%ax, %%gs \n\t"
                "mov %%ax, %%ss \n\t"
-               "mov $8, %%rdx \n\t"
+               // Store RIP offset, pointing to right after 'lretq'
+               "leaq 18(%%rip), %%rcx \n\t" // This is hardcoded to the size of the rest of this ASM block. %rip points to the next MOV instruction, +18 bytes puts it right after 'lretq'
+               "movq $8, %%rdx \n\t"
                "leaq %[update_cs], %%rax \n\t"
                "pushq %%rdx \n\t"
                "pushq %%rax \n\t"
-               "lretq \n\t" // lretq and retfq are the same.
-               // lretq is supported by both GCC and Clang, while retfq works only with GCC. Either way, little endian opcode is 0x48CB.
+               "lretq \n\t" // NOTE: lretq and retfq are the same. lretq is supported by both GCC and Clang, while retfq works only with GCC. Either way, opcode is 0x48CB.
+               // The address loaded into %rcx points here (right after 'lretq'), so execution returns to this point without breaking compiler compatibility
                : // No outputs
                : [update_cs] "m" (ret_data)// Inputs
                : // No clobbers
@@ -1456,21 +1461,23 @@ static void cs_update(void)
   //
   // NOTE: Yes, this function is more than a little weird.
   //
-  // cs_update() will have a dangling 'ret'/'retq' after 'retfq'/'lretq'. It's fine, though, because
-  // "ret_data" contains a hardcoded 'retq' to replace it. Manipulating 'retfq' to go to the right
-  // place doesn't work any other way because 'leaq' will load a borked address into RAX when using
-  // asm labels--specifically it will load an address relative to the kernel image base in such a
-  // way that it won't get relocated by a loader. Mysterious crashes ensue.
+  // cs_update() will have a 'ret'/'retq' (and maybe some other things) after the asm 'retfq'/'lretq'. It's
+  // fine, though, because "ret_data" contains a hardcoded jmp to get back to it. Why not just push an asm
+  // label located right after 'lretq' that's been preloaded into %rax (so that the label address gets loaded
+  // into the instruction pointer on 'lretq')? Well, it turns out that will load an address relative to the
+  // kernel file image base in such a way that the address won't get relocated by the boot loader. Mysterious
+  // crashes ensue. This solves that.
   //
-  // That stated, I think the insanity here speaks for itself, especially since this is all *necessary*
-  // to modify the CS register in 64-bit mode using 'retfq'. Far jumps in 64-bit mode are more
-  // dangerous and not well supported (also syntactically annoying), as are far calls. So we just
-  // have to deal with making farquad returns behave in a very controlled manner... including any
-  // resulting movie references from 2001. But hey, it works, and it shouldn't cause issues with
-  // kernels loaded above 4GB RAM.
+  // That stated, I think the insanity here speaks for itself, especially since all this is *necessary* to
+  // modify the %cs register in 64-bit mode using 'retfq'. Could far jumps and far calls be used? Yes, but not
+  // very easily in inline ASM (far jumps in 64-bit mode are very limited: only memory-indirect absolute far
+  // jumps can change %cs). Also, using the 'lretq' trick maintains quadword alignment on the stack, which is
+  // nice. So really we just have to deal with making farquad returns behave in a very controlled manner...
+  // which includes accepting any resulting movie references from 2001. But hey, it works, and it shouldn't
+  // cause issues with kernels loaded above 4GB RAM. It works great between Clang and GCC, too.
   //
-  // The only issue with this method really is it'll screw up CPU prediction for a tiny bit (for a small
-  // number of subsequent function calls, then it fixes itself). Only need this nonsense once, though!
+  // The only issue with this method really is it'll screw up CPU return prediction for a tiny bit (for a
+  // small number of subsequent function calls, then it fixes itself). Only need this nonsense once, though!
   //
 }
 
@@ -1484,9 +1491,79 @@ static void cs_update(void)
 // architecture, so this is a pretty important step.
 //
 
+static IDT_GATE_STRUCT IDT_data[256] = {0}; // Reserve static memory for the IDT
+
 void Setup_IDT(void)
 {
+  DT_STRUCT idt_reg_data = {0};
+  idt_reg_data.Limit = sizeof(IDT_data) - 1; // Max is 16 bytes * 256 entries = 4096, - 1 = 4095 or 0xfff
+  idt_reg_data.BaseAddress = (uint64_t)IDT_data;
 
+
+  printf("isr_caller: %#qx\r\n", (uint64_t)isr_caller);
+  // Set up ISRs per ISR.S layout
+  set_interrupt_ISR(0, (uint64_t)isr_caller); // Divide by zero
+  // TODO
+  // Also make a test interrupt using 32, don't forget to change unused_isr_min
+
+  uint64_t unused_isr_min = 32; // IDT entries from this number to 255 will be set as non-present.
+
+  // Set P = 0 for unused entries; need 256 entries. CPU will triple-fault otherwise on receipt of an unused ISR.
+  for(uint64_t i = unused_isr_min; i < 256; i++)
+  {
+    set_unused_ISR(i);
+  }
+
+  set_idtr(idt_reg_data);
+}
+
+// Set up corresponding ISR function's IDT entry
+// This is for architecturally-defined ISRs (IDT entries 0-31) and user-defined entries (32-255)
+static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 0; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8E; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
+// This is to set up a trap gate in the IDT for a given ISR
+static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 0; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8F; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
+// This is for unused ISRs. They need to be populated otherwise the CPU will triple fault.
+static void set_unused_ISR(uint64_t isr_num)
+{
+  IDT_data[isr_num].Offset1 = 0;
+  IDT_data[isr_num].SegmentSelector = 0x08;
+  IDT_data[isr_num].ISTandZero = 0;
+  IDT_data[isr_num].Misc = 0x0E; // P=0, DPL=0, S=0, placeholder interrupt type
+  IDT_data[isr_num].Offset2 = 0;
+  IDT_data[isr_num].Offset3 = 0;
+  IDT_data[isr_num].Reserved = 0;
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1958,3 +2035,24 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
   }
 }
 // END cpu_features
+
+// TODO
+void AVX_ISR_handler(INTERRUPT_FRAME_NOPL * frame)
+{
+
+}
+
+void ISR_handler(INTERRUPT_FRAME_NOPL * frame)
+{
+  printf("Interrupt!\r\n");
+}
+
+void AVX_EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code)
+{
+
+}
+
+void EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code)
+{
+  printf("Exception!\r\n");
+}

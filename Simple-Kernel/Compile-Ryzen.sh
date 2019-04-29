@@ -2,7 +2,7 @@
 #
 # =================================
 #
-# RELEASE VERSION 1.02
+# RELEASE VERSION 1.04
 #
 # GCC Kernel64 Linux Compile Script
 #
@@ -98,31 +98,31 @@ done < $CurDir/h_files.txt
 
 set -v
 for f in $CurDir/startup/*.c; do
-  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
 #
-# Compile the .s files in the startup folder (Any assembly files needed to
+# Compile the .S files in the startup folder (Any assembly files needed to
 # initialize the system)
 #
 
 # "as" version
 #set -v
-#for f in $CurDir/startup/*.s; do
-#  echo "$BINUTILS_FOLDER_NAME/bin/as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
-#  "$BINUTILS_FOLDER_NAME/bin/as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
+#for f in $CurDir/startup/*.S; do
+#  echo "$BINUTILS_FOLDER_NAME/bin/as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.S"
+#  "$BINUTILS_FOLDER_NAME/bin/as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.S"
 #done
 #set +v
 
 # "gcc" version
-#set -v
-#for f in $CurDir/startup/*.s; do
-#  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
-#  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
-#done
-#set +v
+set -v
+for f in $CurDir/startup/*.S; do
+  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=znver1 -mavx2 -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+done
+set +v
 
 #
 # Compile user .c files

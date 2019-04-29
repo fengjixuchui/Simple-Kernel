@@ -414,7 +414,7 @@ GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
 typedef struct __attribute__ ((packed)) {
   UINT16 Limit; // Limit + 1 = size, since limit + base = the last valid address
   UINT64 BaseAddress;
-} DT_STRUCT; // GDT and IDT use this format
+} DT_STRUCT; // GDTR and IDTR use this format
 
 // Intel Architecture Manual Vol. 3A, Fig. 3-8 (Segment Descriptor)
 typedef struct __attribute__ ((packed)) {
@@ -426,6 +426,7 @@ typedef struct __attribute__ ((packed)) {
   UINT8  BaseAddress3; // Most significant bits (31:24)
 } GDT_ENTRY_STRUCT; // This whole struct can fit in a 64-bit int. Printf %lx could give the whole thing.
 
+// Intel Architecture Manual Vol. 3A, Fig. 7-4 (Format of TSS and LDT Descriptors in 64-bit Mode)
 typedef struct __attribute__ ((packed)) {
   UINT16 SegmentLimit1; // Low bits, SegmentLimit2andMisc2 has MSBs (it's a 20-bit value)
   UINT16 BaseAddress1; // Low bits (15:0)
@@ -490,17 +491,50 @@ typedef struct __attribute__ ((packed)) {
   UINT16 IO_Map_Base; // 16-bit offset to I/O permission bit map, relative to 64-bit TSS base (i.e. base of this struct)
 } TSS64_STRUCT;
 
-// TODO: Trap/task/interrupt gate for x64
+// Intel Architecture Manual Vol. 3A, Fig. 6-7 (64-Bit IDT Gate Descriptors)
+typedef struct __attribute__ ((packed)) {
+ UINT16 Offset1; // Low offset bits (15:0)
+ UINT16 SegmentSelector;
+ UINT8  ISTandZero; // Low bits (2:0) are IST, (7:3) should be set to 0
+ UINT8  Misc; // Bits 0-3: segment/gate Type, 4: S (set to 0), 5-6: DPL, 7: P
+ UINT16 Offset2; // Middle offset bits (31:16)
+ UINT32 Offset3; // Upper offset bits (63:32)
+ UINT32 Reserved;
+} IDT_GATE_STRUCT; // Interrupt and trap gates use this format
 
-// Intel Architecture Manual Vol. 3A, Fig. 6-8
-// Note the order of this frame with respect to the stack.
+// Intel Architecture Manual Vol. 3A, Fig. 6-4 (Stack Usage on Transfers to Interrupt and Exception-Handling Routines)
+// and Fig. 6-8 (IA-32e Mode Stack Usage After Privilege Level Change)
+// Note the order of these structs with respect to the stack.
 typedef struct __attribute__ ((packed)) {
   UINT64 rip;
   UINT64 cs;
   UINT64 rflags;
   UINT64 rsp;
   UINT64 ss;
-} INTERRUPT_FRAME;
+} INTERRUPT_FRAME_PL; // For change in privilege level
+
+typedef struct __attribute__ ((packed)) {
+  UINT64 rip;
+  UINT64 cs;
+  UINT64 rflags;
+} INTERRUPT_FRAME_NOPL; // No change in privilege level
+
+// Exception codes are pushed before rip (get popped last)
+typedef struct __attribute__ ((packed)) {
+  UINT64 error_code;
+  UINT64 rip;
+  UINT64 cs;
+  UINT64 rflags;
+  UINT64 rsp;
+  UINT64 ss;
+} EXCEPTION_FRAME_PL; // For change in privilege level
+
+typedef struct __attribute__ ((packed)) {
+  UINT64 error_code;
+  UINT64 rip;
+  UINT64 cs;
+  UINT64 rflags;
+} EXCEPTION_FRAME_NOPL; // No change in privilege level
 
 //----------------------------------------------------------------------------------------------------------------------------------
 //  Function Prototypes
@@ -508,6 +542,11 @@ typedef struct __attribute__ ((packed)) {
 //
 // All functions defined by files in the "src" folder
 //
+
+extern void avx_isr_caller();
+extern void isr_caller();
+extern void avx_exc_caller();
+extern void exc_caller();
 
 // Initialization-related functions (System.c)
 void System_Init(LOADER_PARAMS * LP);
@@ -544,6 +583,11 @@ void Setup_Paging(void);
 char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-byte array
 char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
+
+void AVX_ISR_handler(INTERRUPT_FRAME_NOPL * frame);
+void ISR_handler(INTERRUPT_FRAME_NOPL * frame);
+void AVX_EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code);
+void EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code);
 
 // NOTE: Not in System.c, these functions are in Kernel64.c.
 void Print_All_CRs_and_Some_Major_CPU_Features(void);

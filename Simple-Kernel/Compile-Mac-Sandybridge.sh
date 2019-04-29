@@ -2,7 +2,7 @@
 #
 # =================================
 #
-# RELEASE VERSION 1.02
+# RELEASE VERSION 1.04
 #
 # GCC/Clang Kernel64 Mac Compile Script
 #
@@ -93,22 +93,29 @@ done < $CurDir/h_files.txt
 
 set -v
 for f in $CurDir/startup/*.c; do
-  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
-  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
+  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.c"
 done
 set +v
 
 #
-# Compile the .s files in the startup folder (Any assembly files needed to
+# Compile the .S files in the startup folder (Any assembly files needed to
 # initialize the system)
 #
 
 #set -v
-#for f in $CurDir/startup/*.s; do
-#  echo "as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
-#  "as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.s"
+#for f in $CurDir/startup/*.S; do
+#  echo "as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.S"
+#  "as" -64 -I"$CurDir/inc/" -g -o "${f%.*}.o" "${f%.*}.S"
 #done
 #set +v
+
+set -v
+for f in $CurDir/startup/*.S; do
+  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+done
+set +v
 
 #
 # Compile user .c files

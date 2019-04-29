@@ -629,7 +629,7 @@ void Print_Segment_Registers(void)
   printf("CS: %#qx\r\n", cs);
 }
 
-// Why does "general-regs-only" not work?
+// TODO: make these in ASM
 /*
 // Interrupt handler
 __attribute__ ((interrupt, target("general-regs-only"))) void IRQ_Handler(INTERRUPT_FRAME * frame)
