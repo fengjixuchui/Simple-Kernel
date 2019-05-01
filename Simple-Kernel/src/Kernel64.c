@@ -62,8 +62,10 @@
 
 #include "Kernel64.h"
 
-#define MAJOR_VER 0
-#define MINOR_VER 'z'
+// Stack size defined in number of bytes, e.g. (1 << 12) is 4kiB, (1 << 20) is 1MiB
+#define STACK_SIZE (1 << 20)
+
+static unsigned char kernel_stack[STACK_SIZE] = {0};
 
 // The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
 static const unsigned char load_image[48] = {
@@ -150,41 +152,8 @@ static const unsigned char load_image3[144] = {
 // Output_render_text will ignore the last 5 bits of zeros in each row if width is specified as 27.
 
 // To print text requires a bitmap font.
-// NOTE: Using Output_render_bitmap instead of Output_render_text technically allows any arbitrary font to be used as long as it is stored the same way as the included font8x8.
+// NOTE: Using Output_render_bitmap() instead of Output_render_text() technically allows any arbitrary font to be used as long as it is stored the same way as the included font8x8.
 // A character would need to be passed as otherfont['a'] instead of just 'a' in this case.
-
-/* Reminder of the LOADER_PARAMS and GPU_CONFIG formats:
-
-  typedef struct {
-    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
-    UINT64                              NumberOfFrameBuffers; // The number of pointers in the array (== the number of available framebuffers)
-  } GPU_CONFIG;
-
-  typedef struct {
-    UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
-    UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
-
-    UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
-    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
-    EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-    UINTN                   Memory_Map_Size;                // The total size of the system memory map
-
-    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded kernel file
-    UINTN                   Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
-
-    CHAR16                 *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
-    UINT64                  ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
-    CHAR16                 *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
-    UINT64                  Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
-    CHAR16                 *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
-    UINT64                  Kernel_Options_Size;            // The size (in bytes) of the above load options string
-
-    EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
-    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see above GPU_CONFIG struct for details
-    EFI_FILE_INFO          *FileMeta;                       // Kernel file metadata
-    void                   *RSDP;                           // A pointer to the RSDP ACPI table
-  } LOADER_PARAMS;
-*/
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // kernel_main: Main Function
@@ -193,14 +162,28 @@ static const unsigned char load_image3[144] = {
 // The main entry point of the kernel/program/OS and what the bootloader hands off to.
 //
 
-void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
+// Can't use local variables in a naked function (at least, the compiler won't allow it, though it can be done with assembly)
+// Make them static globals instead, which still keeps them essentially local (local to this file, at any rate).
+// They'll just take up some program RAM instead of stack space.
+static unsigned char swapped_image[sizeof(load_image2)] = {0};
+static char brandstring[48] = {0};
+static char Manufacturer_ID[13] = {0};
+
+__attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
+  // First things first, set up a stack.
+  // This is why having a naked function is important, otherwise the kernel would still be using the UEFI's stack as part of the function prolog (or prologue, if you must).
+  asm volatile ("leaq %[new_stack_base], %%rbp\n\t"
+                "leaq %[new_stack_end], %%rsp \n\t"
+                : // No outputs
+                : [new_stack_base] "m" (kernel_stack[0]), [new_stack_end] "m" (kernel_stack[STACK_SIZE]) // Inputs; %rsp is decremented before use, so STACK_SIZE is used instead of STACK_SIZE - 1
+                : // No clobbers
+              );
+
   // Now initialize the system (Virtual mappings (identity-map), printf, AVX, any straggling control registers, HWP, maskable interrupts)
   System_Init(LP); // See System.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
 
   // Main Body Start
-
-  unsigned char swapped_image[sizeof(load_image2)] = {0}; // Local arrays are undefined until set.
 
 //  bitmap_bitswap(load_image, 12, 27, swapped_image);
 //  char swapped_image2[sizeof(load_image)];
@@ -215,11 +198,9 @@ void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   Print_Loader_Params(LP);
   Print_Segment_Registers();
 
-  char brandstring[48] = {0};
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
   printf("%.48s\r\n", brandstring);
 
-  char Manufacturer_ID[13] = {0};
   Get_Manufacturer_ID(Manufacturer_ID); // Returns a char* pointer to Manufacturer_ID. Don't need it here, though.
   printf("%s\r\n\n", Manufacturer_ID);
 
@@ -627,22 +608,10 @@ void Print_Segment_Registers(void)
 
   uint64_t cs = read_cs();
   printf("CS: %#qx\r\n", cs);
+
+  volatile uint64_t c = cs / (cs >> 10); // force divide by zero error // TODO: remove this, lol
 }
 
-// TODO: make these in ASM
-/*
-// Interrupt handler
-__attribute__ ((interrupt, target("general-regs-only"))) void IRQ_Handler(INTERRUPT_FRAME * frame)
-{
-
-}
-
-// Exception handler
-__attribute__ ((interrupt, target("general-regs-only"))) void Exception_Handler(INTERRUPT_FRAME * frame, uint64_t error_code)
-{
-
-}
-*/
 ////////////////////////////////////////////////////
 
 // TODO: keyboard driver (PS/2 for starters, then USB)

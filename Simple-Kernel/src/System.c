@@ -22,7 +22,6 @@ static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr);
 static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr);
 static void set_unused_ISR(uint64_t isr_num);
 
-
 //----------------------------------------------------------------------------------------------------------------------------------
 // System_Init: Initial Setup
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1500,9 +1499,10 @@ void Setup_IDT(void)
   idt_reg_data.BaseAddress = (uint64_t)IDT_data;
 
 
-  printf("isr_caller: %#qx\r\n", (uint64_t)isr_caller);
+  printf("isr_pusher0: %#qx\r\n", (uint64_t)isr_pusher0);
+  printf("avx_isr_pusher0: %#qx\r\n", (uint64_t)avx_isr_pusher0);
   // Set up ISRs per ISR.S layout
-  set_interrupt_ISR(0, (uint64_t)isr_caller); // Divide by zero
+  set_interrupt_ISR(0, (uint64_t)isr_pusher0); // Divide by zero
   // TODO
   // Also make a test interrupt using 32, don't forget to change unused_isr_min
 
@@ -2037,22 +2037,68 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 // END cpu_features
 
 // TODO
-void AVX_ISR_handler(INTERRUPT_FRAME_NOPL * frame)
+void AVX_ISR_handler(INTERRUPT_FRAME * i_frame)
 {
-
+  printf("AVX Interrupt!\r\n");
+  asm volatile ("hlt");
 }
 
-void ISR_handler(INTERRUPT_FRAME_NOPL * frame)
+void ISR_handler(INTERRUPT_FRAME * i_frame)
 {
-  printf("Interrupt!\r\n");
+  switch(i_frame->isr_num)
+  {
+    case 0:
+      printf("Fault #DE: Divide by Zero!\r\n");
+      printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
+      printf("rbp: %#qx, r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx\r\n", i_frame->rbp, i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12);
+      printf("r13: %#qx, r14: %#qx, r15: %#qx, isr_num: %#qx, rip: %#qx, cs: %#qx\r\n", i_frame->r13, i_frame->r14, i_frame->r15, i_frame->isr_num, i_frame->rip, i_frame->cs);
+      printf("rflags: %#qx, rsp: %#qx, ss: %#qx\r\n", i_frame->rflags, i_frame->rsp, i_frame->ss);
+      asm volatile("hlt");
+      break;
+    case 1:
+    case 2:
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7:
+    case 9:
+    case 16:
+    case 17:
+    case 18:
+    case 19:
+    case 20:
+
+    // 15, 21-31 are reserved
+    //TODO rest of cases and exc handler (for cases 8, 10-14)
+
+    default:
+      printf("Unhandled interrupt entry: %#qx\r\n", i_frame->isr_num);
+      printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
+      printf("rbp: %#qx, r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx\r\n", i_frame->rbp, i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12);
+      printf("r13: %#qx, r14: %#qx, r15: %#qx, isr_num: %#qx, rip: %#qx, cs: %#qx\r\n", i_frame->r13, i_frame->r14, i_frame->r15, i_frame->isr_num, i_frame->rip, i_frame->cs);
+      printf("rflags: %#qx, rsp: %#qx, ss: %#qx\r\n", i_frame->rflags, i_frame->rsp, i_frame->ss);
+      asm volatile("hlt");
+      break;
+  }
 }
 
-void AVX_EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code)
+void AVX_EXC_handler(EXCEPTION_FRAME * e_frame)
 {
-
+  printf("AVX Exception!\r\n");
 }
 
-void EXC_handler(INTERRUPT_FRAME_NOPL * frame, uint64_t error_code)
+void EXC_handler(EXCEPTION_FRAME * e_frame)
 {
   printf("Exception!\r\n");
+  switch(e_frame->isr_num)
+  {
+    case 8:
+    case 10:
+    case 11:
+    case 12:
+    case 13:
+    case 14:
+    default:
+  }
 }

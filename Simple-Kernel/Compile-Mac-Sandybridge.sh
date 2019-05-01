@@ -112,8 +112,8 @@ set +v
 
 set -v
 for f in $CurDir/startup/*.S; do
-  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
-  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  echo "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  "gcc" -ffreestanding -march=sandybridge -mavx -m64 -fpie -fno-stack-protector -mno-red-zone $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
 done
 set +v
 

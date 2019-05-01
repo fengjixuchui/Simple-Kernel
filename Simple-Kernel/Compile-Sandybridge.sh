@@ -119,8 +119,8 @@ set +v
 # "gcc" version
 set -v
 for f in $CurDir/startup/*.S; do
-  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
-  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  echo "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
+  "$GCC_FOLDER_NAME/bin/gcc" -ffreestanding -march=sandybridge -mavx -fpie -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 $HFILES -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adhln="${f%.*}.out" -MF"${f%.*}.d" -MT"${f%.*}.o" -o "${f%.*}.o" "${f%.*}.S"
 done
 set +v
 

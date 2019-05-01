@@ -55,7 +55,7 @@ The below "How to Build from Source" section contains complete compilation instr
 The entry point function (i.e. the "main" function) of your program should look like this, otherwise the kernel will fail to run:  
 
 ```
-void kernel_main(LOADER_PARAMS * LP) // Loader Parameters  
+__attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters  
 {  
 
 }
