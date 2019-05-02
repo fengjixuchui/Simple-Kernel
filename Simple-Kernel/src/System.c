@@ -2036,10 +2036,97 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 }
 // END cpu_features
 
+//----------------------------------------------------------------------------------------------------------------------------------
+// Interrupt Handlers: Handlers for System Interrupts and Exceptions
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Various interrupts and exception handlers are defined here
+//
+
 // TODO
-void AVX_ISR_handler(INTERRUPT_FRAME * i_frame)
+void AVX_ISR_handler(AVX_INTERRUPT_FRAME * i_frame)
 {
-  printf("AVX Interrupt!\r\n");
+  printf("AVX Interrupt! Entry: %#qu\r\n", i_frame->isr_num);
+  printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
+  printf("r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx, r13: %#qx\r\n", i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12, i_frame->r13);
+  printf("r14: %#qx, r15: %#qx, rbp: %#qx, rip: %#qx, cs: %#qx, rflags: %#qx\r\n", i_frame->r14, i_frame->r15, i_frame->rbp, i_frame->rip, i_frame->cs, i_frame->rflags);
+  printf("rsp: %#qx, ss: %#qx\r\n", i_frame->rsp, i_frame->ss);
+#ifdef __AVX512F__ // Hope screen resolution is high enough to see all this... Would need font scale 1, 8x8 font on 1280px-wide screen. 1024x768 can't really fit it horizontally: need at least 1032 px wide at font scale 1, 8x8 font.
+  printf("ZMM0: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm0[0], i_frame->zmm0[1], i_frame->zmm0[2], i_frame->zmm0[3], i_frame->zmm0[4], i_frame->zmm0[5], i_frame->zmm0[6], i_frame->zmm0[7]);
+  printf("ZMM1: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm1[0], i_frame->zmm1[1], i_frame->zmm1[2], i_frame->zmm1[3], i_frame->zmm1[4], i_frame->zmm1[5], i_frame->zmm1[6], i_frame->zmm1[7]);
+  printf("ZMM2: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm2[0], i_frame->zmm2[1], i_frame->zmm2[2], i_frame->zmm2[3], i_frame->zmm2[4], i_frame->zmm2[5], i_frame->zmm2[6], i_frame->zmm2[7]);
+  printf("ZMM3: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm3[0], i_frame->zmm3[1], i_frame->zmm3[2], i_frame->zmm3[3], i_frame->zmm3[4], i_frame->zmm3[5], i_frame->zmm3[6], i_frame->zmm3[7]);
+  printf("ZMM4: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm4[0], i_frame->zmm4[1], i_frame->zmm4[2], i_frame->zmm4[3], i_frame->zmm4[4], i_frame->zmm4[5], i_frame->zmm4[6], i_frame->zmm4[7]);
+  printf("ZMM5: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm5[0], i_frame->zmm5[1], i_frame->zmm5[2], i_frame->zmm5[3], i_frame->zmm5[4], i_frame->zmm5[5], i_frame->zmm5[6], i_frame->zmm5[7]);
+  printf("ZMM6: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm6[0], i_frame->zmm6[1], i_frame->zmm6[2], i_frame->zmm6[3], i_frame->zmm6[4], i_frame->zmm6[5], i_frame->zmm6[6], i_frame->zmm6[7]);
+  printf("ZMM7: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm7[0], i_frame->zmm7[1], i_frame->zmm7[2], i_frame->zmm7[3], i_frame->zmm7[4], i_frame->zmm7[5], i_frame->zmm7[6], i_frame->zmm7[7]);
+  printf("ZMM8: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm8[0], i_frame->zmm8[1], i_frame->zmm8[2], i_frame->zmm8[3], i_frame->zmm8[4], i_frame->zmm8[5], i_frame->zmm8[6], i_frame->zmm8[7]);
+  printf("ZMM9: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm9[0], i_frame->zmm9[1], i_frame->zmm9[2], i_frame->zmm9[3], i_frame->zmm9[4], i_frame->zmm9[5], i_frame->zmm9[6], i_frame->zmm9[7]);
+  printf("ZMM10: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm10[0], i_frame->zmm10[1], i_frame->zmm10[2], i_frame->zmm10[3], i_frame->zmm10[4], i_frame->zmm10[5], i_frame->zmm10[6], i_frame->zmm10[7]);
+  printf("ZMM11: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm11[0], i_frame->zmm11[1], i_frame->zmm11[2], i_frame->zmm11[3], i_frame->zmm11[4], i_frame->zmm11[5], i_frame->zmm11[6], i_frame->zmm11[7]);
+  printf("ZMM12: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm12[0], i_frame->zmm12[1], i_frame->zmm12[2], i_frame->zmm12[3], i_frame->zmm12[4], i_frame->zmm12[5], i_frame->zmm12[6], i_frame->zmm12[7]);
+  printf("ZMM13: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm13[0], i_frame->zmm13[1], i_frame->zmm13[2], i_frame->zmm13[3], i_frame->zmm13[4], i_frame->zmm13[5], i_frame->zmm13[6], i_frame->zmm13[7]);
+  printf("ZMM14: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm14[0], i_frame->zmm14[1], i_frame->zmm14[2], i_frame->zmm14[3], i_frame->zmm14[4], i_frame->zmm14[5], i_frame->zmm14[6], i_frame->zmm14[7]);
+  printf("ZMM15: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm15[0], i_frame->zmm15[1], i_frame->zmm15[2], i_frame->zmm15[3], i_frame->zmm15[4], i_frame->zmm15[5], i_frame->zmm15[6], i_frame->zmm15[7]);
+  printf("ZMM16: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm16[0], i_frame->zmm16[1], i_frame->zmm16[2], i_frame->zmm16[3], i_frame->zmm16[4], i_frame->zmm16[5], i_frame->zmm16[6], i_frame->zmm16[7]);
+  printf("ZMM17: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm17[0], i_frame->zmm17[1], i_frame->zmm17[2], i_frame->zmm17[3], i_frame->zmm17[4], i_frame->zmm17[5], i_frame->zmm17[6], i_frame->zmm17[7]);
+  printf("ZMM18: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm18[0], i_frame->zmm18[1], i_frame->zmm18[2], i_frame->zmm18[3], i_frame->zmm18[4], i_frame->zmm18[5], i_frame->zmm18[6], i_frame->zmm18[7]);
+  printf("ZMM19: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm19[0], i_frame->zmm19[1], i_frame->zmm19[2], i_frame->zmm19[3], i_frame->zmm19[4], i_frame->zmm19[5], i_frame->zmm19[6], i_frame->zmm19[7]);
+  printf("ZMM20: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm20[0], i_frame->zmm20[1], i_frame->zmm20[2], i_frame->zmm20[3], i_frame->zmm20[4], i_frame->zmm20[5], i_frame->zmm20[6], i_frame->zmm20[7]);
+  printf("ZMM21: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm21[0], i_frame->zmm21[1], i_frame->zmm21[2], i_frame->zmm21[3], i_frame->zmm21[4], i_frame->zmm21[5], i_frame->zmm21[6], i_frame->zmm21[7]);
+  printf("ZMM22: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm22[0], i_frame->zmm22[1], i_frame->zmm22[2], i_frame->zmm22[3], i_frame->zmm22[4], i_frame->zmm22[5], i_frame->zmm22[6], i_frame->zmm22[7]);
+  printf("ZMM23: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm23[0], i_frame->zmm23[1], i_frame->zmm23[2], i_frame->zmm23[3], i_frame->zmm23[4], i_frame->zmm23[5], i_frame->zmm23[6], i_frame->zmm23[7]);
+  printf("ZMM24: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm24[0], i_frame->zmm24[1], i_frame->zmm24[2], i_frame->zmm24[3], i_frame->zmm24[4], i_frame->zmm24[5], i_frame->zmm24[6], i_frame->zmm24[7]);
+  printf("ZMM25: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm25[0], i_frame->zmm25[1], i_frame->zmm25[2], i_frame->zmm25[3], i_frame->zmm25[4], i_frame->zmm25[5], i_frame->zmm25[6], i_frame->zmm25[7]);
+  printf("ZMM26: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm26[0], i_frame->zmm26[1], i_frame->zmm26[2], i_frame->zmm26[3], i_frame->zmm26[4], i_frame->zmm26[5], i_frame->zmm26[6], i_frame->zmm26[7]);
+  printf("ZMM27: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm27[0], i_frame->zmm27[1], i_frame->zmm27[2], i_frame->zmm27[3], i_frame->zmm27[4], i_frame->zmm27[5], i_frame->zmm27[6], i_frame->zmm27[7]);
+  printf("ZMM28: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm28[0], i_frame->zmm28[1], i_frame->zmm28[2], i_frame->zmm28[3], i_frame->zmm28[4], i_frame->zmm28[5], i_frame->zmm28[6], i_frame->zmm28[7]);
+  printf("ZMM29: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm29[0], i_frame->zmm29[1], i_frame->zmm29[2], i_frame->zmm29[3], i_frame->zmm29[4], i_frame->zmm29[5], i_frame->zmm29[6], i_frame->zmm29[7]);
+  printf("ZMM30: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm30[0], i_frame->zmm30[1], i_frame->zmm30[2], i_frame->zmm30[3], i_frame->zmm30[4], i_frame->zmm30[5], i_frame->zmm30[6], i_frame->zmm30[7]);
+  printf("ZMM31: %#016qx%016qx%016qx%016qx%016qx%016qx%016qx%016qx\r\n", i_frame->zmm31[0], i_frame->zmm31[1], i_frame->zmm31[2], i_frame->zmm31[3], i_frame->zmm31[4], i_frame->zmm31[5], i_frame->zmm31[6], i_frame->zmm31[7]);
+  #ifdef __AVX512BW__
+    printf("k0: %#qx, k1: %#qx, k2: %#qx, k3: %#qx\r\n", i_frame->k0, i_frame->k1, i_frame->k2, i_frame->k3);
+    printf("k4: %#qx, k5: %#qx, k6: %#qx, k7: %#qx\r\n", i_frame->k4, i_frame->k5, i_frame->k6, i_frame->k7);
+  #else
+    printf("k0: %#hx, k1: %#hx, k2: %#hx, k3: %#hx\r\n", i_frame->k0, i_frame->k1, i_frame->k2, i_frame->k3);
+    printf("k4: %#hx, k5: %#hx, k6: %#hx, k7: %#hx\r\n", i_frame->k4, i_frame->k5, i_frame->k6, i_frame->k7);
+  #endif
+#elif __AVX__
+  printf("YMM0: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm0[0], i_frame->ymm0[1], i_frame->ymm0[2], i_frame->ymm0[3]);
+  printf("YMM1: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm1[0], i_frame->ymm1[1], i_frame->ymm1[2], i_frame->ymm1[3]);
+  printf("YMM2: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm2[0], i_frame->ymm2[1], i_frame->ymm2[2], i_frame->ymm2[3]);
+  printf("YMM3: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm3[0], i_frame->ymm3[1], i_frame->ymm3[2], i_frame->ymm3[3]);
+  printf("YMM4: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm4[0], i_frame->ymm4[1], i_frame->ymm4[2], i_frame->ymm4[3]);
+  printf("YMM5: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm5[0], i_frame->ymm5[1], i_frame->ymm5[2], i_frame->ymm5[3]);
+  printf("YMM6: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm6[0], i_frame->ymm6[1], i_frame->ymm6[2], i_frame->ymm6[3]);
+  printf("YMM7: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm7[0], i_frame->ymm7[1], i_frame->ymm7[2], i_frame->ymm7[3]);
+  printf("YMM8: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm8[0], i_frame->ymm8[1], i_frame->ymm8[2], i_frame->ymm8[3]);
+  printf("YMM9: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm9[0], i_frame->ymm9[1], i_frame->ymm9[2], i_frame->ymm9[3]);
+  printf("YMM10: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm10[0], i_frame->ymm10[1], i_frame->ymm10[2], i_frame->ymm10[3]);
+  printf("YMM11: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm11[0], i_frame->ymm11[1], i_frame->ymm11[2], i_frame->ymm11[3]);
+  printf("YMM12: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm12[0], i_frame->ymm12[1], i_frame->ymm12[2], i_frame->ymm12[3]);
+  printf("YMM13: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm13[0], i_frame->ymm13[1], i_frame->ymm13[2], i_frame->ymm13[3]);
+  printf("YMM14: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm14[0], i_frame->ymm14[1], i_frame->ymm14[2], i_frame->ymm14[3]);
+  printf("YMM15: %#016qx%016qx%016qx%016qx\r\n", i_frame->ymm15[0], i_frame->ymm15[1], i_frame->ymm15[2], i_frame->ymm15[3]);
+#else // SSE
+  printf("XMM0: %#016qx%016qx\r\n", i_frame->xmm0[0], i_frame->xmm0[1]);
+  printf("XMM1: %#016qx%016qx\r\n", i_frame->xmm1[0], i_frame->xmm1[1]);
+  printf("XMM2: %#016qx%016qx\r\n", i_frame->xmm2[0], i_frame->xmm2[1]);
+  printf("XMM3: %#016qx%016qx\r\n", i_frame->xmm3[0], i_frame->xmm3[1]);
+  printf("XMM4: %#016qx%016qx\r\n", i_frame->xmm4[0], i_frame->xmm4[1]);
+  printf("XMM5: %#016qx%016qx\r\n", i_frame->xmm5[0], i_frame->xmm5[1]);
+  printf("XMM6: %#016qx%016qx\r\n", i_frame->xmm6[0], i_frame->xmm6[1]);
+  printf("XMM7: %#016qx%016qx\r\n", i_frame->xmm7[0], i_frame->xmm7[1]);
+  printf("XMM8: %#016qx%016qx\r\n", i_frame->xmm8[0], i_frame->xmm8[1]);
+  printf("XMM9: %#016qx%016qx\r\n", i_frame->xmm9[0], i_frame->xmm9[1]);
+  printf("XMM10: %#016qx%016qx\r\n", i_frame->xmm10[0], i_frame->xmm10[1]);
+  printf("XMM11: %#016qx%016qx\r\n", i_frame->xmm11[0], i_frame->xmm11[1]);
+  printf("XMM12: %#016qx%016qx\r\n", i_frame->xmm12[0], i_frame->xmm12[1]);
+  printf("XMM13: %#016qx%016qx\r\n", i_frame->xmm13[0], i_frame->xmm13[1]);
+  printf("XMM14: %#016qx%016qx\r\n", i_frame->xmm14[0], i_frame->xmm14[1]);
+  printf("XMM15: %#016qx%016qx\r\n", i_frame->xmm15[0], i_frame->xmm15[1]);
+#endif
+
   asm volatile ("hlt");
 }
 
@@ -2048,11 +2135,11 @@ void ISR_handler(INTERRUPT_FRAME * i_frame)
   switch(i_frame->isr_num)
   {
     case 0:
-      printf("Fault #DE: Divide by Zero!\r\n");
+      printf("Fault #DE: Divide by Zero! IDT Entry: %#qu\r\n", i_frame->isr_num);
       printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
-      printf("rbp: %#qx, r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx\r\n", i_frame->rbp, i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12);
-      printf("r13: %#qx, r14: %#qx, r15: %#qx, isr_num: %#qx, rip: %#qx, cs: %#qx\r\n", i_frame->r13, i_frame->r14, i_frame->r15, i_frame->isr_num, i_frame->rip, i_frame->cs);
-      printf("rflags: %#qx, rsp: %#qx, ss: %#qx\r\n", i_frame->rflags, i_frame->rsp, i_frame->ss);
+      printf("r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx, r13: %#qx\r\n", i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12, i_frame->r13);
+      printf("r14: %#qx, r15: %#qx, rbp: %#qx, rip: %#qx, cs: %#qx, rflags: %#qx\r\n", i_frame->r14, i_frame->r15, i_frame->rbp, i_frame->rip, i_frame->cs, i_frame->rflags);
+      printf("rsp: %#qx, ss: %#qx\r\n", i_frame->rsp, i_frame->ss);
       asm volatile("hlt");
       break;
     case 1:
@@ -2075,15 +2162,15 @@ void ISR_handler(INTERRUPT_FRAME * i_frame)
     default:
       printf("Unhandled interrupt entry: %#qx\r\n", i_frame->isr_num);
       printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
-      printf("rbp: %#qx, r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx\r\n", i_frame->rbp, i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12);
-      printf("r13: %#qx, r14: %#qx, r15: %#qx, isr_num: %#qx, rip: %#qx, cs: %#qx\r\n", i_frame->r13, i_frame->r14, i_frame->r15, i_frame->isr_num, i_frame->rip, i_frame->cs);
-      printf("rflags: %#qx, rsp: %#qx, ss: %#qx\r\n", i_frame->rflags, i_frame->rsp, i_frame->ss);
+      printf("r8: %#qx, r9: %#qx, r10: %#qx, r11: %#qx, r12: %#qx, r13: %#qx\r\n", i_frame->r8, i_frame->r9, i_frame->r10, i_frame->r11, i_frame->r12, i_frame->r13);
+      printf("r14: %#qx, r15: %#qx, rbp: %#qx, rip: %#qx, cs: %#qx, rflags: %#qx\r\n", i_frame->r14, i_frame->r15, i_frame->rbp, i_frame->rip, i_frame->cs, i_frame->rflags);
+      printf("rsp: %#qx, ss: %#qx\r\n", i_frame->rsp, i_frame->ss);
       asm volatile("hlt");
       break;
   }
 }
 
-void AVX_EXC_handler(EXCEPTION_FRAME * e_frame)
+void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame)
 {
   printf("AVX Exception!\r\n");
 }
@@ -2100,5 +2187,6 @@ void EXC_handler(EXCEPTION_FRAME * e_frame)
     case 13:
     case 14:
     default:
+      break;
   }
 }

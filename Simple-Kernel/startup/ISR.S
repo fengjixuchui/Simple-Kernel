@@ -2,7 +2,7 @@
 //  Simple Kernel: Interrupt Handlers
 //==================================================================================================================================
 //
-// Version 0.z
+// Version 0.9
 //
 // Author:
 //  KNNSpeed
@@ -10,7 +10,24 @@
 // Source Code:
 //  https://github.com/KNNSpeed/Simple-Kernel
 //
-// This file provides interrupt handlers for x86-64 CPUs.
+// This file provides interrupt handlers for x86-64 CPUs. It is inspired by what Clang/LLVM and GCC use for functions marked with
+// __attribute__((interrupt)). Unfortunately they do not both make the same interrupt code (nor do they support the same features for
+// interrupt functions, e.g. GCC does not support interrupts with SSE/AVX), so doing it this way ensures the best of both worlds and a
+// consistent inter-compiler experience. I have also incorporated a full register dump into interrupt routines, which neither compiler
+// does since they only preserve CPU state with the minimum possible set of registers (interesting since the minimum possible methods are
+// only about 5 registers short of a full register dump onto the stack).
+//
+// This file does what GCC does and refers to interrupts without error codes 'interrupts' (designated by 'isr') and ones with error
+// codes 'exceptions' (designated by 'exc'). Intel names the first 0-31 entries in the IDT (the predefined entries) exceptions, but names
+// 32-255 interrupts. Note that only some of the first 32 entries actually have error codes, meaning most of the first 32 entries will be
+// handled by the interrupt code in this file, despite technically being called exceptions. This file has been set up this way such that
+// only 2 kinds of functions are needed (interrupt and exception) instead of 4: interrupt, interrupt with error code, exception, and
+// exception with error code... And that does not even account for the extra naming complexity brought on by faults, aborts, and traps.
+// Using only 2 names instead of all of that, I think, keeps it about as simple as it needs to be. Plus, working in 64-bit mode means
+// inter-privilege level changes do not even apply--great since those could easily double the number of functions needed--and that the
+// stack frame is auto-aligned by the CPU to 16-bytes since %rsp is pushed unconditionally.
+//
+// ..Ok, technically there are 4 kinds of interrupt/exception callers here, since each one has an AVX/SSE and non-AVX/SSE version.
 //
 
 .extern AVX_ISR_handler
@@ -18,27 +35,72 @@
 .extern AVX_EXC_handler
 .extern EXC_handler
 
-.global avx_isr_caller
-.global isr_caller
-.global avx_exc_caller
-.global exc_caller
-
-.align 8
+// Hardware gets their own handlers, like mouse and keyboard
+//.extern Mouse_handler
+//.extern KB_handler
 
 .section .text
 
 //----------------------------------------------------------------------------------------------------------------------------------
-//  avx_isr_caller: ISR Handler with Instruction Set Extensions
+//  SAVE/RESTORE_ISR_REGISTERS: General Register Only ISR Handler
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Interrupt handler with instruction set extensions (depends on CPU features passed to compiler)
+// Bog-standard interrupt handler macros with no instruction set extensions
+//
+
+.macro SAVE_ISR_REGISTERS offs:req
+  pushq %rbp
+  leaq \offs(%rsp), %rbp // 40 for interrupt, 56 for exception with error code + isr_num
+  pushq %r15
+  pushq %r14
+  pushq %r13
+  pushq %r12
+  pushq %r11
+  pushq %r10
+  pushq %r9
+  pushq %r8
+  pushq %rdi
+  pushq %rsi
+  pushq %rdx
+  pushq %rcx
+  pushq %rbx
+  pushq %rax
+  cld
+.endm
+
+.macro RESTORE_ISR_REGISTERS
+  popq %rax
+  popq %rbx
+  popq %rcx
+  popq %rdx
+  popq %rsi
+  popq %rdi
+  popq %r8
+  popq %r9
+  popq %r10
+  popq %r11
+  popq %r12
+  popq %r13
+  popq %r14
+  popq %r15
+  popq %rbp
+.endm
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  SAVE/RESTORE_AVX_ISR_REGISTERS: ISR Handler with Instruction Set Extensions
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Interrupt handler macros with instruction set extensions (depends on CPU features passed to the compiler)
 //
 
 #ifdef __AVX512F__
-avx_isr_caller:
+.macro SAVE_AVX_ISR_REGISTERS offs:req
   pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
+  leaq \offs(%rsp), %rbp // 40 for interrupt, 56 for exception with error code + isr_num
+  pushq %r15
+  pushq %r14
+  pushq %r13
+  pushq %r12
   pushq %r11
   pushq %r10
   pushq %r9
@@ -47,159 +109,121 @@ avx_isr_caller:
   pushq %rsi
   pushq %rdx
   pushq %rcx
-  andq $-64, %rsp
-  subq $2240, %rsp # imm = 0x8C0
-  kmovw %k7, -74(%rbp) # 2-byte Spill
-  kmovw %k6, -76(%rbp) # 2-byte Spill
-  kmovw %k5, -78(%rbp) # 2-byte Spill
-  kmovw %k4, -80(%rbp) # 2-byte Spill
-  kmovw %k3, -82(%rbp) # 2-byte Spill
-  kmovw %k2, -84(%rbp) # 2-byte Spill
-  kmovw %k1, -86(%rbp) # 2-byte Spill
-  kmovw %k0, -88(%rbp) # 2-byte Spill
-  vmovaps %zmm31, -192(%rbp) # 64-byte Spill
-  vmovaps %zmm30, -272(%rbp) # 64-byte Spill
-  vmovaps %zmm29, -368(%rbp) # 64-byte Spill
-  vmovaps %zmm28, -432(%rbp) # 64-byte Spill
-  vmovaps %zmm27, -496(%rbp) # 64-byte Spill
-  vmovaps %zmm26, -560(%rbp) # 64-byte Spill
-  vmovaps %zmm25, -624(%rbp) # 64-byte Spill
-  vmovaps %zmm24, -688(%rbp) # 64-byte Spill
-  vmovaps %zmm23, -752(%rbp) # 64-byte Spill
-  vmovaps %zmm22, -816(%rbp) # 64-byte Spill
-  vmovaps %zmm21, -880(%rbp) # 64-byte Spill
-  vmovaps %zmm20, -944(%rbp) # 64-byte Spill
-  vmovaps %zmm19, -1008(%rbp) # 64-byte Spill
-  vmovaps %zmm18, -1072(%rbp) # 64-byte Spill
-  vmovaps %zmm17, -1136(%rbp) # 64-byte Spill
-  vmovaps %zmm16, -1200(%rbp) # 64-byte Spill
-  vmovaps %zmm15, -1264(%rbp) # 64-byte Spill
-  vmovaps %zmm14, -1328(%rbp) # 64-byte Spill
-  vmovaps %zmm13, -1392(%rbp) # 64-byte Spill
-  vmovaps %zmm12, -1456(%rbp) # 64-byte Spill
-  vmovaps %zmm11, -1520(%rbp) # 64-byte Spill
-  vmovaps %zmm10, -1584(%rbp) # 64-byte Spill
-  vmovaps %zmm9, -1648(%rbp) # 64-byte Spill
-  vmovaps %zmm8, -1712(%rbp) # 64-byte Spill
-  vmovaps %zmm7, -1776(%rbp) # 64-byte Spill
-  vmovaps %zmm6, -1840(%rbp) # 64-byte Spill
-  vmovaps %zmm5, -1904(%rbp) # 64-byte Spill
-  vmovaps %zmm4, -1968(%rbp) # 64-byte Spill
-  vmovaps %zmm3, -2032(%rbp) # 64-byte Spill
-  vmovaps %zmm2, -2096(%rbp) # 64-byte Spill
-  vmovaps %zmm1, -2160(%rbp) # 64-byte Spill
-  vmovaps %zmm0, -2224(%rbp) # 64-byte Spill
-  cld
-  leaq 8(%rbp), %rax
-  movq %rax, 56(%rsp)
+  pushq %rbx
+  pushq %rax
+#ifdef __AVX512BW__
+  subq $2112, %rsp
+  kmovq %k7, 2104(%rsp)
+  kmovq %k6, 2096(%rsp)
+  kmovq %k5, 2088(%rsp)
+  kmovq %k4, 2080(%rsp)
+  kmovq %k3, 2072(%rsp)
+  kmovq %k2, 2064(%rsp)
+  kmovq %k1, 2056(%rsp)
+  kmovq %k0, 2048(%rsp)
+#else // AVX512F
+  subq $2064, %rsp
+  kmovw %k7, 2062(%rsp)
+  kmovw %k6, 2060(%rsp)
+  kmovw %k5, 2058(%rsp)
+  kmovw %k4, 2056(%rsp)
+  kmovw %k3, 2054(%rsp)
+  kmovw %k2, 2052(%rsp)
+  kmovw %k1, 2050(%rsp)
+  kmovw %k0, 2048(%rsp)
+#endif
+  vmovdqu64 %zmm31, 1984(%rsp)
+  vmovdqu64 %zmm30, 1920(%rsp)
+  vmovdqu64 %zmm29, 1856(%rsp)
+  vmovdqu64 %zmm28, 1792(%rsp)
+  vmovdqu64 %zmm27, 1728(%rsp)
+  vmovdqu64 %zmm26, 1664(%rsp)
+  vmovdqu64 %zmm25, 1600(%rsp)
+  vmovdqu64 %zmm24, 1536(%rsp)
+  vmovdqu64 %zmm23, 1472(%rsp)
+  vmovdqu64 %zmm22, 1408(%rsp)
+  vmovdqu64 %zmm21, 1344(%rsp)
+  vmovdqu64 %zmm20, 1280(%rsp)
+  vmovdqu64 %zmm19, 1216(%rsp)
+  vmovdqu64 %zmm18, 1152(%rsp)
+  vmovdqu64 %zmm17, 1088(%rsp)
+  vmovdqu64 %zmm16, 1024(%rsp)
+  vmovdqu64 %zmm15, 960(%rsp)
+  vmovdqu64 %zmm14, 896(%rsp)
+  vmovdqu64 %zmm13, 832(%rsp)
+  vmovdqu64 %zmm12, 768(%rsp)
+  vmovdqu64 %zmm11, 704(%rsp)
+  vmovdqu64 %zmm10, 640(%rsp)
+  vmovdqu64 %zmm9, 576(%rsp)
+  vmovdqu64 %zmm8, 512(%rsp)
+  vmovdqu64 %zmm7, 448(%rsp)
+  vmovdqu64 %zmm6, 384(%rsp)
+  vmovdqu64 %zmm5, 320(%rsp)
+  vmovdqu64 %zmm4, 256(%rsp)
+  vmovdqu64 %zmm3, 192(%rsp)
+  vmovdqu64 %zmm2, 128(%rsp)
+  vmovdqu64 %zmm1, 64(%rsp)
+  vmovdqu64 %zmm0, (%rsp)
   vzeroupper
-  callq AVX_ISR_handler
-  vmovaps -2224(%rbp), %zmm0 # 64-byte Reload
-  vmovaps -2160(%rbp), %zmm1 # 64-byte Reload
-  vmovaps -2096(%rbp), %zmm2 # 64-byte Reload
-  vmovaps -2032(%rbp), %zmm3 # 64-byte Reload
-  vmovaps -1968(%rbp), %zmm4 # 64-byte Reload
-  vmovaps -1904(%rbp), %zmm5 # 64-byte Reload
-  vmovaps -1840(%rbp), %zmm6 # 64-byte Reload
-  vmovaps -1776(%rbp), %zmm7 # 64-byte Reload
-  vmovaps -1712(%rbp), %zmm8 # 64-byte Reload
-  vmovaps -1648(%rbp), %zmm9 # 64-byte Reload
-  vmovaps -1584(%rbp), %zmm10 # 64-byte Reload
-  vmovaps -1520(%rbp), %zmm11 # 64-byte Reload
-  vmovaps -1456(%rbp), %zmm12 # 64-byte Reload
-  vmovaps -1392(%rbp), %zmm13 # 64-byte Reload
-  vmovaps -1328(%rbp), %zmm14 # 64-byte Reload
-  vmovaps -1264(%rbp), %zmm15 # 64-byte Reload
-  vmovaps -1200(%rbp), %zmm16 # 64-byte Reload
-  vmovaps -1136(%rbp), %zmm17 # 64-byte Reload
-  vmovaps -1072(%rbp), %zmm18 # 64-byte Reload
-  vmovaps -1008(%rbp), %zmm19 # 64-byte Reload
-  vmovaps -944(%rbp), %zmm20 # 64-byte Reload
-  vmovaps -880(%rbp), %zmm21 # 64-byte Reload
-  vmovaps -816(%rbp), %zmm22 # 64-byte Reload
-  vmovaps -752(%rbp), %zmm23 # 64-byte Reload
-  vmovaps -688(%rbp), %zmm24 # 64-byte Reload
-  vmovaps -624(%rbp), %zmm25 # 64-byte Reload
-  vmovaps -560(%rbp), %zmm26 # 64-byte Reload
-  vmovaps -496(%rbp), %zmm27 # 64-byte Reload
-  vmovaps -432(%rbp), %zmm28 # 64-byte Reload
-  vmovaps -368(%rbp), %zmm29 # 64-byte Reload
-  vmovaps -272(%rbp), %zmm30 # 64-byte Reload
-  vmovaps -192(%rbp), %zmm31 # 64-byte Reload
-  kmovw -88(%rbp), %k0 # 2-byte Reload
-  kmovw -86(%rbp), %k1 # 2-byte Reload
-  kmovw -84(%rbp), %k2 # 2-byte Reload
-  kmovw -82(%rbp), %k3 # 2-byte Reload
-  kmovw -80(%rbp), %k4 # 2-byte Reload
-  kmovw -78(%rbp), %k5 # 2-byte Reload
-  kmovw -76(%rbp), %k6 # 2-byte Reload
-  kmovw -74(%rbp), %k7 # 2-byte Reload
-  leaq -72(%rbp), %rsp
-  popq %rcx
-  popq %rdx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rax
-  popq %rbp
-  iretq
+  cld
+.endm
 
-#elif __AVX2__
-avx_isr_caller:
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  andq $-32, %rsp
-  subq $608, %rsp # imm = 0x260
-  vmovaps %ymm15, -128(%rbp) # 32-byte Spill
-  vmovaps %ymm14, -176(%rbp) # 32-byte Spill
-  vmovaps %ymm13, -208(%rbp) # 32-byte Spill
-  vmovaps %ymm12, -240(%rbp) # 32-byte Spill
-  vmovaps %ymm11, -272(%rbp) # 32-byte Spill
-  vmovaps %ymm10, -304(%rbp) # 32-byte Spill
-  vmovaps %ymm9, -336(%rbp) # 32-byte Spill
-  vmovaps %ymm8, -368(%rbp) # 32-byte Spill
-  vmovaps %ymm7, -400(%rbp) # 32-byte Spill
-  vmovaps %ymm6, -432(%rbp) # 32-byte Spill
-  vmovaps %ymm5, -464(%rbp) # 32-byte Spill
-  vmovaps %ymm4, -496(%rbp) # 32-byte Spill
-  vmovaps %ymm3, -528(%rbp) # 32-byte Spill
-  vmovaps %ymm2, -560(%rbp) # 32-byte Spill
-  vmovaps %ymm1, -592(%rbp) # 32-byte Spill
-  vmovaps %ymm0, -624(%rbp) # 32-byte Spill
-  cld
-  leaq 8(%rbp), %rax
-  movq %rax, 24(%rsp)
-  vzeroupper
-  callq AVX_ISR_handler
-  vmovaps -624(%rbp), %ymm0 # 32-byte Reload
-  vmovaps -592(%rbp), %ymm1 # 32-byte Reload
-  vmovaps -560(%rbp), %ymm2 # 32-byte Reload
-  vmovaps -528(%rbp), %ymm3 # 32-byte Reload
-  vmovaps -496(%rbp), %ymm4 # 32-byte Reload
-  vmovaps -464(%rbp), %ymm5 # 32-byte Reload
-  vmovaps -432(%rbp), %ymm6 # 32-byte Reload
-  vmovaps -400(%rbp), %ymm7 # 32-byte Reload
-  vmovaps -368(%rbp), %ymm8 # 32-byte Reload
-  vmovaps -336(%rbp), %ymm9 # 32-byte Reload
-  vmovaps -304(%rbp), %ymm10 # 32-byte Reload
-  vmovaps -272(%rbp), %ymm11 # 32-byte Reload
-  vmovaps -240(%rbp), %ymm12 # 32-byte Reload
-  vmovaps -208(%rbp), %ymm13 # 32-byte Reload
-  vmovaps -176(%rbp), %ymm14 # 32-byte Reload
-  vmovaps -128(%rbp), %ymm15 # 32-byte Reload
-  leaq -72(%rbp), %rsp
+.macro RESTORE_AVX_ISR_REGISTERS
+  vmovdqu64 (%rsp), %zmm0
+  vmovdqu64 64(%rsp), %zmm1
+  vmovdqu64 128(%rsp), %zmm2
+  vmovdqu64 192(%rsp), %zmm3
+  vmovdqu64 256(%rsp), %zmm4
+  vmovdqu64 320(%rsp), %zmm5
+  vmovdqu64 384(%rsp), %zmm6
+  vmovdqu64 448(%rsp), %zmm7
+  vmovdqu64 512(%rsp), %zmm8
+  vmovdqu64 576(%rsp), %zmm9
+  vmovdqu64 640(%rsp), %zmm10
+  vmovdqu64 704(%rsp), %zmm11
+  vmovdqu64 768(%rsp), %zmm12
+  vmovdqu64 832(%rsp), %zmm13
+  vmovdqu64 896(%rsp), %zmm14
+  vmovdqu64 960(%rsp), %zmm15
+  vmovdqu64 1024(%rsp), %zmm16
+  vmovdqu64 1088(%rsp), %zmm17
+  vmovdqu64 1152(%rsp), %zmm18
+  vmovdqu64 1216(%rsp), %zmm19
+  vmovdqu64 1280(%rsp), %zmm20
+  vmovdqu64 1344(%rsp), %zmm21
+  vmovdqu64 1408(%rsp), %zmm22
+  vmovdqu64 1472(%rsp), %zmm23
+  vmovdqu64 1536(%rsp), %zmm24
+  vmovdqu64 1600(%rsp), %zmm25
+  vmovdqu64 1664(%rsp), %zmm26
+  vmovdqu64 1728(%rsp), %zmm27
+  vmovdqu64 1792(%rsp), %zmm28
+  vmovdqu64 1856(%rsp), %zmm29
+  vmovdqu64 1920(%rsp), %zmm30
+  vmovdqu64 1984(%rsp), %zmm31
+#ifdef __AVX512BW__
+  kmovw 2048(%rsp), %k0
+  kmovw 2056(%rsp), %k1
+  kmovw 2064(%rsp), %k2
+  kmovw 2072(%rsp), %k3
+  kmovw 2080(%rsp), %k4
+  kmovw 2088(%rsp), %k5
+  kmovw 2096(%rsp), %k6
+  kmovw 2104(%rsp), %k7
+  addq $2112, %rsp
+#else // AVX512F
+  kmovw 2048(%rsp), %k0
+  kmovw 2050(%rsp), %k1
+  kmovw 2052(%rsp), %k2
+  kmovw 2054(%rsp), %k3
+  kmovw 2056(%rsp), %k4
+  kmovw 2058(%rsp), %k5
+  kmovw 2060(%rsp), %k6
+  kmovw 2062(%rsp), %k7
+  addq $2064, %rsp
+#endif
+  popq %rax
+  popq %rbx
   popq %rcx
   popq %rdx
   popq %rsi
@@ -208,15 +232,21 @@ avx_isr_caller:
   popq %r9
   popq %r10
   popq %r11
-  popq %rax
+  popq %r12
+  popq %r13
+  popq %r14
+  popq %r15
   popq %rbp
-  iretq
+.endm
 
 #elif __AVX__
-avx_isr_caller:
+.macro SAVE_AVX_ISR_REGISTERS offs:req
   pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
+  leaq \offs(%rsp), %rbp // 40 for interrupt, 56 for exception with error code + isr_num
+  pushq %r15
+  pushq %r14
+  pushq %r13
+  pushq %r12
   pushq %r11
   pushq %r10
   pushq %r9
@@ -225,46 +255,49 @@ avx_isr_caller:
   pushq %rsi
   pushq %rdx
   pushq %rcx
-  andq $-32, %rsp
-  subq $608, %rsp # imm = 0x260
-  vmovaps %ymm15, -128(%rbp) # 32-byte Spill
-  vmovaps %ymm14, -176(%rbp) # 32-byte Spill
-  vmovaps %ymm13, -208(%rbp) # 32-byte Spill
-  vmovaps %ymm12, -240(%rbp) # 32-byte Spill
-  vmovaps %ymm11, -272(%rbp) # 32-byte Spill
-  vmovaps %ymm10, -304(%rbp) # 32-byte Spill
-  vmovaps %ymm9, -336(%rbp) # 32-byte Spill
-  vmovaps %ymm8, -368(%rbp) # 32-byte Spill
-  vmovaps %ymm7, -400(%rbp) # 32-byte Spill
-  vmovaps %ymm6, -432(%rbp) # 32-byte Spill
-  vmovaps %ymm5, -464(%rbp) # 32-byte Spill
-  vmovaps %ymm4, -496(%rbp) # 32-byte Spill
-  vmovaps %ymm3, -528(%rbp) # 32-byte Spill
-  vmovaps %ymm2, -560(%rbp) # 32-byte Spill
-  vmovaps %ymm1, -592(%rbp) # 32-byte Spill
-  vmovaps %ymm0, -624(%rbp) # 32-byte Spill
-  cld
-  leaq 8(%rbp), %rax
-  movq %rax, 24(%rsp)
+  pushq %rbx
+  pushq %rax
+  subq $512, %rsp
+  vmovdqu %ymm15, 480(%rsp) // AVX wants 32-byte alignment. We can only guarantee 16 without making a mess.
+  vmovdqu %ymm14, 448(%rsp)
+  vmovdqu %ymm13, 416(%rsp)
+  vmovdqu %ymm12, 384(%rsp)
+  vmovdqu %ymm11, 352(%rsp)
+  vmovdqu %ymm10, 320(%rsp)
+  vmovdqu %ymm9, 288(%rsp)
+  vmovdqu %ymm8, 256(%rsp)
+  vmovdqu %ymm7, 224(%rsp)
+  vmovdqu %ymm6, 192(%rsp)
+  vmovdqu %ymm5, 160(%rsp)
+  vmovdqu %ymm4, 128(%rsp)
+  vmovdqu %ymm3, 96(%rsp)
+  vmovdqu %ymm2, 64(%rbp)
+  vmovdqu %ymm1, 32(%rsp)
+  vmovdqu %ymm0, (%rsp)
   vzeroupper
-  callq AVX_ISR_handler
-  vmovaps -624(%rbp), %ymm0 # 32-byte Reload
-  vmovaps -592(%rbp), %ymm1 # 32-byte Reload
-  vmovaps -560(%rbp), %ymm2 # 32-byte Reload
-  vmovaps -528(%rbp), %ymm3 # 32-byte Reload
-  vmovaps -496(%rbp), %ymm4 # 32-byte Reload
-  vmovaps -464(%rbp), %ymm5 # 32-byte Reload
-  vmovaps -432(%rbp), %ymm6 # 32-byte Reload
-  vmovaps -400(%rbp), %ymm7 # 32-byte Reload
-  vmovaps -368(%rbp), %ymm8 # 32-byte Reload
-  vmovaps -336(%rbp), %ymm9 # 32-byte Reload
-  vmovaps -304(%rbp), %ymm10 # 32-byte Reload
-  vmovaps -272(%rbp), %ymm11 # 32-byte Reload
-  vmovaps -240(%rbp), %ymm12 # 32-byte Reload
-  vmovaps -208(%rbp), %ymm13 # 32-byte Reload
-  vmovaps -176(%rbp), %ymm14 # 32-byte Reload
-  vmovaps -128(%rbp), %ymm15 # 32-byte Reload
-  leaq -72(%rbp), %rsp
+  cld
+.endm
+
+.macro RESTORE_AVX_ISR_REGISTERS
+  vmovdqu (%rsp), %ymm0
+  vmovdqu 32(%rsp), %ymm1
+  vmovdqu 64(%rsp), %ymm2
+  vmovdqu 96(%rsp), %ymm3
+  vmovdqu 128(%rsp), %ymm4
+  vmovdqu 160(%rsp), %ymm5
+  vmovdqu 192(%rsp), %ymm6
+  vmovdqu 224(%rsp), %ymm7
+  vmovdqu 256(%rsp), %ymm8
+  vmovdqu 288(%rsp), %ymm9
+  vmovdqu 320(%rsp), %ymm10
+  vmovdqu 352(%rsp), %ymm11
+  vmovdqu 384(%rsp), %ymm12
+  vmovdqu 416(%rsp), %ymm13
+  vmovdqu 448(%rsp), %ymm14
+  vmovdqu 480(%rsp), %ymm15
+  addq $512, %rsp
+  popq %rax
+  popq %rbx
   popq %rcx
   popq %rdx
   popq %rsi
@@ -273,15 +306,21 @@ avx_isr_caller:
   popq %r9
   popq %r10
   popq %r11
-  popq %rax
+  popq %r12
+  popq %r13
+  popq %r14
+  popq %r15
   popq %rbp
-  iretq
+.endm
 
-#elif __SSE2__
-avx_isr_caller:
+#else // SSE
+.macro SAVE_AVX_ISR_REGISTERS offs:req
   pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
+  leaq \offs(%rsp), %rbp // 40 for interrupt, 56 for exception with error code + isr_num
+  pushq %r15
+  pushq %r14
+  pushq %r13
+  pushq %r12
   pushq %r11
   pushq %r10
   pushq %r9
@@ -290,44 +329,48 @@ avx_isr_caller:
   pushq %rsi
   pushq %rdx
   pushq %rcx
-  subq $280, %rsp # imm = 0x118
-  movaps %xmm15, -96(%rbp) # 16-byte Spill
-  movaps %xmm14, -112(%rbp) # 16-byte Spill
-  movaps %xmm13, -128(%rbp) # 16-byte Spill
-  movaps %xmm12, -144(%rbp) # 16-byte Spill
-  movaps %xmm11, -160(%rbp) # 16-byte Spill
-  movaps %xmm10, -176(%rbp) # 16-byte Spill
-  movaps %xmm9, -192(%rbp) # 16-byte Spill
-  movaps %xmm8, -208(%rbp) # 16-byte Spill
-  movaps %xmm7, -224(%rbp) # 16-byte Spill
-  movaps %xmm6, -240(%rbp) # 16-byte Spill
-  movaps %xmm5, -256(%rbp) # 16-byte Spill
-  movaps %xmm4, -272(%rbp) # 16-byte Spill
-  movaps %xmm3, -288(%rbp) # 16-byte Spill
-  movaps %xmm2, -304(%rbp) # 16-byte Spill
-  movaps %xmm1, -320(%rbp) # 16-byte Spill
-  movaps %xmm0, -336(%rbp) # 16-byte Spill
+  pushq %rbx
+  pushq %rax
+  subq $256, %rsp
+  movdqa %xmm15, 240(%rsp)
+  movdqa %xmm14, 224(%rsp)
+  movdqa %xmm13, 208(%rsp)
+  movdqa %xmm12, 192(%rsp)
+  movdqa %xmm11, 176(%rsp)
+  movdqa %xmm10, 160(%rsp)
+  movdqa %xmm9, 144(%rsp)
+  movdqa %xmm8, 128(%rsp)
+  movdqa %xmm7, 112(%rsp)
+  movdqa %xmm6, 96(%rsp)
+  movdqa %xmm5, 80(%rsp)
+  movdqa %xmm4, 64(%rsp)
+  movdqa %xmm3, 48(%rsp)
+  movdqa %xmm2, 32(%rsp)
+  movdqa %xmm1, 16(%rsp)
+  movdqa %xmm0, (%rsp)
   cld
-  leaq 8(%rbp), %rax
-  movq %rax, -344(%rbp)
-  callq AVX_ISR_handler
-  movaps -336(%rbp), %xmm0 # 16-byte Reload
-  movaps -320(%rbp), %xmm1 # 16-byte Reload
-  movaps -304(%rbp), %xmm2 # 16-byte Reload
-  movaps -288(%rbp), %xmm3 # 16-byte Reload
-  movaps -272(%rbp), %xmm4 # 16-byte Reload
-  movaps -256(%rbp), %xmm5 # 16-byte Reload
-  movaps -240(%rbp), %xmm6 # 16-byte Reload
-  movaps -224(%rbp), %xmm7 # 16-byte Reload
-  movaps -208(%rbp), %xmm8 # 16-byte Reload
-  movaps -192(%rbp), %xmm9 # 16-byte Reload
-  movaps -176(%rbp), %xmm10 # 16-byte Reload
-  movaps -160(%rbp), %xmm11 # 16-byte Reload
-  movaps -144(%rbp), %xmm12 # 16-byte Reload
-  movaps -128(%rbp), %xmm13 # 16-byte Reload
-  movaps -112(%rbp), %xmm14 # 16-byte Reload
-  movaps -96(%rbp), %xmm15 # 16-byte Reload
-  addq $280, %rsp # imm = 0x118
+.endm
+
+.macro RESTORE_AVX_ISR_REGISTERS
+  movdqa (%rsp), %xmm0
+  movdqa 16(%rsp), %xmm1
+  movdqa 32(%rsp), %xmm2
+  movdqa 48(%rsp), %xmm3
+  movdqa 64(%rsp), %xmm4
+  movdqa 80(%rsp), %xmm5
+  movdqa 96(%rsp), %xmm6
+  movdqa 112(%rsp), %xmm7
+  movdqa 128(%rsp), %xmm8
+  movdqa 144(%rsp), %xmm9
+  movdqa 160(%rsp), %xmm10
+  movdqa 176(%rsp), %xmm11
+  movdqa 192(%rsp), %xmm12
+  movdqa 208(%rsp), %xmm13
+  movdqa 224(%rsp), %xmm14
+  movdqa 240(%rsp), %xmm15
+  addq $256, %rsp
+  popq %rax
+  popq %rbx
   popq %rcx
   popq %rdx
   popq %rsi
@@ -336,419 +379,83 @@ avx_isr_caller:
   popq %r9
   popq %r10
   popq %r11
-  popq %rax
+  popq %r12
+  popq %r13
+  popq %r14
+  popq %r15
   popq %rbp
-  iretq
+.endm
 
 #endif
 
 //----------------------------------------------------------------------------------------------------------------------------------
-//  isr_caller: General Register Only ISR Handler
+//  isr_pusherX: Push Interrupt Number X Onto Stack and Call Handlers
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Bog-standard interrupt handler with no instruction set extensions
+// IDT points to these, which push the interrupt number onto the stack and call the relevant handler. Hard to know what interrupt is
+// being handled without these.
 //
 
-isr_caller:
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rcx
-  pushq %rdx
-  pushq %rax
-  subq $8, %rsp
-  leaq 8(%rbp), %rax
-  movq %rax, -80(%rbp)
-  movl $0, %eax
-  cld
+.global isr_pusher0
+
+isr_pusher0:
+  SAVE_ISR_REGISTERS 40
+  pushq $0
+#ifdef __MINGW32__
+  movq %rsp, %rcx // MS ABI x86-64
+#else
+  movq %rsp, %rdi // SYSV ABI x86-64
+#endif
+  movl $0, %eax // Stack trace end
   callq ISR_handler
-  nop
   addq $8, %rsp
-  popq %rax
-  popq %rdx
-  popq %rcx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rbp
+  RESTORE_ISR_REGISTERS
   iretq
 
-//----------------------------------------------------------------------------------------------------------------------------------
-//  avx_exc_caller: Exception Handler with Instruction Set Extensions
-//----------------------------------------------------------------------------------------------------------------------------------
-//
-// Exception handler with instruction set extensions (depends on CPU features passed to compiler)
-//
+.global exc_pusher8
 
-#ifdef __AVX512F__
-avx_exc_caller:
-  pushq %rax
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  andq $-64, %rsp
-  subq $2240, %rsp # imm = 0x8C0
-  kmovw %k7, -74(%rbp) # 2-byte Spill
-  kmovw %k6, -76(%rbp) # 2-byte Spill
-  kmovw %k5, -78(%rbp) # 2-byte Spill
-  kmovw %k4, -80(%rbp) # 2-byte Spill
-  kmovw %k3, -82(%rbp) # 2-byte Spill
-  kmovw %k2, -84(%rbp) # 2-byte Spill
-  kmovw %k1, -86(%rbp) # 2-byte Spill
-  kmovw %k0, -88(%rbp) # 2-byte Spill
-  vmovaps %zmm31, -192(%rbp) # 64-byte Spill
-  vmovaps %zmm30, -272(%rbp) # 64-byte Spill
-  vmovaps %zmm29, -368(%rbp) # 64-byte Spill
-  vmovaps %zmm28, -432(%rbp) # 64-byte Spill
-  vmovaps %zmm27, -496(%rbp) # 64-byte Spill
-  vmovaps %zmm26, -560(%rbp) # 64-byte Spill
-  vmovaps %zmm25, -624(%rbp) # 64-byte Spill
-  vmovaps %zmm24, -688(%rbp) # 64-byte Spill
-  vmovaps %zmm23, -752(%rbp) # 64-byte Spill
-  vmovaps %zmm22, -816(%rbp) # 64-byte Spill
-  vmovaps %zmm21, -880(%rbp) # 64-byte Spill
-  vmovaps %zmm20, -944(%rbp) # 64-byte Spill
-  vmovaps %zmm19, -1008(%rbp) # 64-byte Spill
-  vmovaps %zmm18, -1072(%rbp) # 64-byte Spill
-  vmovaps %zmm17, -1136(%rbp) # 64-byte Spill
-  vmovaps %zmm16, -1200(%rbp) # 64-byte Spill
-  vmovaps %zmm15, -1264(%rbp) # 64-byte Spill
-  vmovaps %zmm14, -1328(%rbp) # 64-byte Spill
-  vmovaps %zmm13, -1392(%rbp) # 64-byte Spill
-  vmovaps %zmm12, -1456(%rbp) # 64-byte Spill
-  vmovaps %zmm11, -1520(%rbp) # 64-byte Spill
-  vmovaps %zmm10, -1584(%rbp) # 64-byte Spill
-  vmovaps %zmm9, -1648(%rbp) # 64-byte Spill
-  vmovaps %zmm8, -1712(%rbp) # 64-byte Spill
-  vmovaps %zmm7, -1776(%rbp) # 64-byte Spill
-  vmovaps %zmm6, -1840(%rbp) # 64-byte Spill
-  vmovaps %zmm5, -1904(%rbp) # 64-byte Spill
-  vmovaps %zmm4, -1968(%rbp) # 64-byte Spill
-  vmovaps %zmm3, -2032(%rbp) # 64-byte Spill
-  vmovaps %zmm2, -2096(%rbp) # 64-byte Spill
-  vmovaps %zmm1, -2160(%rbp) # 64-byte Spill
-  vmovaps %zmm0, -2224(%rbp) # 64-byte Spill
-  cld
-  movq 16(%rbp), %rax
-  leaq 24(%rbp), %rcx
-  movq %rcx, 64(%rsp)
-  movq %rax, 56(%rsp) # 8-byte Spill
-  vzeroupper
-  callq AVX_EXC_handler
-  vmovaps -2224(%rbp), %zmm0 # 64-byte Reload
-  vmovaps -2160(%rbp), %zmm1 # 64-byte Reload
-  vmovaps -2096(%rbp), %zmm2 # 64-byte Reload
-  vmovaps -2032(%rbp), %zmm3 # 64-byte Reload
-  vmovaps -1968(%rbp), %zmm4 # 64-byte Reload
-  vmovaps -1904(%rbp), %zmm5 # 64-byte Reload
-  vmovaps -1840(%rbp), %zmm6 # 64-byte Reload
-  vmovaps -1776(%rbp), %zmm7 # 64-byte Reload
-  vmovaps -1712(%rbp), %zmm8 # 64-byte Reload
-  vmovaps -1648(%rbp), %zmm9 # 64-byte Reload
-  vmovaps -1584(%rbp), %zmm10 # 64-byte Reload
-  vmovaps -1520(%rbp), %zmm11 # 64-byte Reload
-  vmovaps -1456(%rbp), %zmm12 # 64-byte Reload
-  vmovaps -1392(%rbp), %zmm13 # 64-byte Reload
-  vmovaps -1328(%rbp), %zmm14 # 64-byte Reload
-  vmovaps -1264(%rbp), %zmm15 # 64-byte Reload
-  vmovaps -1200(%rbp), %zmm16 # 64-byte Reload
-  vmovaps -1136(%rbp), %zmm17 # 64-byte Reload
-  vmovaps -1072(%rbp), %zmm18 # 64-byte Reload
-  vmovaps -1008(%rbp), %zmm19 # 64-byte Reload
-  vmovaps -944(%rbp), %zmm20 # 64-byte Reload
-  vmovaps -880(%rbp), %zmm21 # 64-byte Reload
-  vmovaps -816(%rbp), %zmm22 # 64-byte Reload
-  vmovaps -752(%rbp), %zmm23 # 64-byte Reload
-  vmovaps -688(%rbp), %zmm24 # 64-byte Reload
-  vmovaps -624(%rbp), %zmm25 # 64-byte Reload
-  vmovaps -560(%rbp), %zmm26 # 64-byte Reload
-  vmovaps -496(%rbp), %zmm27 # 64-byte Reload
-  vmovaps -432(%rbp), %zmm28 # 64-byte Reload
-  vmovaps -368(%rbp), %zmm29 # 64-byte Reload
-  vmovaps -272(%rbp), %zmm30 # 64-byte Reload
-  vmovaps -192(%rbp), %zmm31 # 64-byte Reload
-  kmovw -88(%rbp), %k0 # 2-byte Reload
-  kmovw -86(%rbp), %k1 # 2-byte Reload
-  kmovw -84(%rbp), %k2 # 2-byte Reload
-  kmovw -82(%rbp), %k3 # 2-byte Reload
-  kmovw -80(%rbp), %k4 # 2-byte Reload
-  kmovw -78(%rbp), %k5 # 2-byte Reload
-  kmovw -76(%rbp), %k6 # 2-byte Reload
-  kmovw -74(%rbp), %k7 # 2-byte Reload
-  leaq -72(%rbp), %rsp
-  popq %rcx
-  popq %rdx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rax
-  popq %rbp
-  addq $16, %rsp
-  iretq
-
-#elif __AVX2__
-avx_exc_caller:
-  pushq %rax
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  andq $-32, %rsp
-  subq $608, %rsp # imm = 0x260
-  vmovaps %ymm15, -128(%rbp) # 32-byte Spill
-  vmovaps %ymm14, -176(%rbp) # 32-byte Spill
-  vmovaps %ymm13, -208(%rbp) # 32-byte Spill
-  vmovaps %ymm12, -240(%rbp) # 32-byte Spill
-  vmovaps %ymm11, -272(%rbp) # 32-byte Spill
-  vmovaps %ymm10, -304(%rbp) # 32-byte Spill
-  vmovaps %ymm9, -336(%rbp) # 32-byte Spill
-  vmovaps %ymm8, -368(%rbp) # 32-byte Spill
-  vmovaps %ymm7, -400(%rbp) # 32-byte Spill
-  vmovaps %ymm6, -432(%rbp) # 32-byte Spill
-  vmovaps %ymm5, -464(%rbp) # 32-byte Spill
-  vmovaps %ymm4, -496(%rbp) # 32-byte Spill
-  vmovaps %ymm3, -528(%rbp) # 32-byte Spill
-  vmovaps %ymm2, -560(%rbp) # 32-byte Spill
-  vmovaps %ymm1, -592(%rbp) # 32-byte Spill
-  vmovaps %ymm0, -624(%rbp) # 32-byte Spill
-  cld
-  movq 16(%rbp), %rax
-  leaq 24(%rbp), %rcx
-  movq %rcx, 32(%rsp)
-  movq %rax, 24(%rsp) # 8-byte Spill
-  vzeroupper
-  callq AVX_EXC_handler
-  vmovaps -624(%rbp), %ymm0 # 32-byte Reload
-  vmovaps -592(%rbp), %ymm1 # 32-byte Reload
-  vmovaps -560(%rbp), %ymm2 # 32-byte Reload
-  vmovaps -528(%rbp), %ymm3 # 32-byte Reload
-  vmovaps -496(%rbp), %ymm4 # 32-byte Reload
-  vmovaps -464(%rbp), %ymm5 # 32-byte Reload
-  vmovaps -432(%rbp), %ymm6 # 32-byte Reload
-  vmovaps -400(%rbp), %ymm7 # 32-byte Reload
-  vmovaps -368(%rbp), %ymm8 # 32-byte Reload
-  vmovaps -336(%rbp), %ymm9 # 32-byte Reload
-  vmovaps -304(%rbp), %ymm10 # 32-byte Reload
-  vmovaps -272(%rbp), %ymm11 # 32-byte Reload
-  vmovaps -240(%rbp), %ymm12 # 32-byte Reload
-  vmovaps -208(%rbp), %ymm13 # 32-byte Reload
-  vmovaps -176(%rbp), %ymm14 # 32-byte Reload
-  vmovaps -128(%rbp), %ymm15 # 32-byte Reload
-  leaq -72(%rbp), %rsp
-  popq %rcx
-  popq %rdx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rax
-  popq %rbp
-  addq $16, %rsp
-  iretq
-
-#elif __AVX__
-avx_exc_caller:
-  pushq %rax
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  andq $-32, %rsp
-  subq $608, %rsp # imm = 0x260
-  vmovaps %ymm15, -128(%rbp) # 32-byte Spill
-  vmovaps %ymm14, -176(%rbp) # 32-byte Spill
-  vmovaps %ymm13, -208(%rbp) # 32-byte Spill
-  vmovaps %ymm12, -240(%rbp) # 32-byte Spill
-  vmovaps %ymm11, -272(%rbp) # 32-byte Spill
-  vmovaps %ymm10, -304(%rbp) # 32-byte Spill
-  vmovaps %ymm9, -336(%rbp) # 32-byte Spill
-  vmovaps %ymm8, -368(%rbp) # 32-byte Spill
-  vmovaps %ymm7, -400(%rbp) # 32-byte Spill
-  vmovaps %ymm6, -432(%rbp) # 32-byte Spill
-  vmovaps %ymm5, -464(%rbp) # 32-byte Spill
-  vmovaps %ymm4, -496(%rbp) # 32-byte Spill
-  vmovaps %ymm3, -528(%rbp) # 32-byte Spill
-  vmovaps %ymm2, -560(%rbp) # 32-byte Spill
-  vmovaps %ymm1, -592(%rbp) # 32-byte Spill
-  vmovaps %ymm0, -624(%rbp) # 32-byte Spill
-  cld
-  movq 16(%rbp), %rax
-  leaq 24(%rbp), %rcx
-  movq %rcx, 32(%rsp)
-  movq %rax, 24(%rsp) # 8-byte Spill
-  vzeroupper
-  callq AVX_EXC_handler
-  vmovaps -624(%rbp), %ymm0 # 32-byte Reload
-  vmovaps -592(%rbp), %ymm1 # 32-byte Reload
-  vmovaps -560(%rbp), %ymm2 # 32-byte Reload
-  vmovaps -528(%rbp), %ymm3 # 32-byte Reload
-  vmovaps -496(%rbp), %ymm4 # 32-byte Reload
-  vmovaps -464(%rbp), %ymm5 # 32-byte Reload
-  vmovaps -432(%rbp), %ymm6 # 32-byte Reload
-  vmovaps -400(%rbp), %ymm7 # 32-byte Reload
-  vmovaps -368(%rbp), %ymm8 # 32-byte Reload
-  vmovaps -336(%rbp), %ymm9 # 32-byte Reload
-  vmovaps -304(%rbp), %ymm10 # 32-byte Reload
-  vmovaps -272(%rbp), %ymm11 # 32-byte Reload
-  vmovaps -240(%rbp), %ymm12 # 32-byte Reload
-  vmovaps -208(%rbp), %ymm13 # 32-byte Reload
-  vmovaps -176(%rbp), %ymm14 # 32-byte Reload
-  vmovaps -128(%rbp), %ymm15 # 32-byte Reload
-  leaq -72(%rbp), %rsp
-  popq %rcx
-  popq %rdx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rax
-  popq %rbp
-  addq $16, %rsp
-  iretq
-
-#elif __SSE2__
-avx_exc_caller:
-  pushq %rax
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %rax
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rdx
-  pushq %rcx
-  subq $288, %rsp # imm = 0x120
-  movaps %xmm15, -96(%rbp) # 16-byte Spill
-  movaps %xmm14, -112(%rbp) # 16-byte Spill
-  movaps %xmm13, -128(%rbp) # 16-byte Spill
-  movaps %xmm12, -144(%rbp) # 16-byte Spill
-  movaps %xmm11, -160(%rbp) # 16-byte Spill
-  movaps %xmm10, -176(%rbp) # 16-byte Spill
-  movaps %xmm9, -192(%rbp) # 16-byte Spill
-  movaps %xmm8, -208(%rbp) # 16-byte Spill
-  movaps %xmm7, -224(%rbp) # 16-byte Spill
-  movaps %xmm6, -240(%rbp) # 16-byte Spill
-  movaps %xmm5, -256(%rbp) # 16-byte Spill
-  movaps %xmm4, -272(%rbp) # 16-byte Spill
-  movaps %xmm3, -288(%rbp) # 16-byte Spill
-  movaps %xmm2, -304(%rbp) # 16-byte Spill
-  movaps %xmm1, -320(%rbp) # 16-byte Spill
-  movaps %xmm0, -336(%rbp) # 16-byte Spill
-  cld
-  movq 16(%rbp), %rax
-  leaq 24(%rbp), %rcx
-  movq %rcx, -344(%rbp)
-  movq %rax, -352(%rbp) # 8-byte Spill
-  callq AVX_EXC_handler
-  movaps -336(%rbp), %xmm0 # 16-byte Reload
-  movaps -320(%rbp), %xmm1 # 16-byte Reload
-  movaps -304(%rbp), %xmm2 # 16-byte Reload
-  movaps -288(%rbp), %xmm3 # 16-byte Reload
-  movaps -272(%rbp), %xmm4 # 16-byte Reload
-  movaps -256(%rbp), %xmm5 # 16-byte Reload
-  movaps -240(%rbp), %xmm6 # 16-byte Reload
-  movaps -224(%rbp), %xmm7 # 16-byte Reload
-  movaps -208(%rbp), %xmm8 # 16-byte Reload
-  movaps -192(%rbp), %xmm9 # 16-byte Reload
-  movaps -176(%rbp), %xmm10 # 16-byte Reload
-  movaps -160(%rbp), %xmm11 # 16-byte Reload
-  movaps -144(%rbp), %xmm12 # 16-byte Reload
-  movaps -128(%rbp), %xmm13 # 16-byte Reload
-  movaps -112(%rbp), %xmm14 # 16-byte Reload
-  movaps -96(%rbp), %xmm15 # 16-byte Reload
-  addq $288, %rsp # imm = 0x120
-  popq %rcx
-  popq %rdx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rax
-  popq %rbp
-  addq $16, %rsp
-  iretq
-
+exc_pusher8:
+  pushq $8
+  SAVE_ISR_REGISTERS 56
+#ifdef __MINGW32__
+  movq %rsp, %rcx // MS ABI x86-64
+#else
+  movq %rsp, %rdi // SYSV ABI x86-64
 #endif
-
-//----------------------------------------------------------------------------------------------------------------------------------
-//  exc_caller: General Register Only Exception Handler
-//----------------------------------------------------------------------------------------------------------------------------------
-//
-// Bog-standard exception handler with no instruction set extensions
-//
-exc_caller:
-  pushq %rbp
-  movq %rsp, %rbp
-  pushq %r11
-  pushq %r10
-  pushq %r9
-  pushq %r8
-  pushq %rdi
-  pushq %rsi
-  pushq %rcx
-  pushq %rdx
-  pushq %rax
-  subq $16, %rsp
-  leaq 16(%rbp), %rax
-  movq %rax, -80(%rbp)
-  movq 8(%rbp), %rax
-  movq %rax, -88(%rbp)
-  movl $0, %eax
-  cld
+  movl $0, %eax // Stack trace end
   callq EXC_handler
-  nop
-  addq $16, %rsp
-  popq %rax
-  popq %rdx
-  popq %rcx
-  popq %rsi
-  popq %rdi
-  popq %r8
-  popq %r9
-  popq %r10
-  popq %r11
-  popq %rbp
+  RESTORE_ISR_REGISTERS
+  addq $8, %rsp
+  iretq
+
+.global avx_isr_pusher0
+
+avx_isr_pusher0:
+  SAVE_AVX_ISR_REGISTERS 40
+  pushq $0 // Push this after AVX for alignment reasons (so that AVX is always at least 16-byte aligned, which means sometimes it will be 32- or 64-byte aligned)
+#ifdef __MINGW32__
+  movq %rsp, %rcx // MS ABI x86-64
+#else
+  movq %rsp, %rdi // SYSV ABI x86-64
+#endif
+  movl $0, %eax // Stack trace end
+  callq AVX_ISR_handler
+  addq $8, %rsp
+  RESTORE_AVX_ISR_REGISTERS
+  iretq
+
+.global avx_exc_pusher8
+
+avx_exc_pusher8:
+  pushq $8 // push isr_num here to maintain 16-byte alignment for AVX
+  SAVE_AVX_ISR_REGISTERS 56
+#ifdef __MINGW32__
+  movq %rsp, %rcx // MS ABI x86-64
+#else
+  movq %rsp, %rdi // SYSV ABI x86-64
+#endif
+  movl $0, %eax // Stack trace end
+  callq AVX_EXC_handler
+  RESTORE_AVX_ISR_REGISTERS
   addq $8, %rsp
   iretq

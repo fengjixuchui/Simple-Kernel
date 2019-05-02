@@ -422,7 +422,7 @@ number:
 			if (neg)
 				tmp++;
 
-			if (!ladjust && padc == '0')
+			if (!ladjust && padc == '0') // TODO: There's a bug here
 				dwidth = width - tmp;
 			width -= tmp + imax(dwidth, n);
 			dwidth -= n;

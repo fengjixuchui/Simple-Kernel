@@ -609,6 +609,8 @@ void Print_Segment_Registers(void)
   uint64_t cs = read_cs();
   printf("CS: %#qx\r\n", cs);
 
+  __m256i_u whaty = _mm256_set1_epi32(0x17);
+  asm volatile("vmovdqu %[what], %%ymm4" : : [what] "m" (whaty) :);
   volatile uint64_t c = cs / (cs >> 10); // force divide by zero error // TODO: remove this, lol
 }
 

@@ -44,6 +44,7 @@
 #include "EfiError.h"
 
 #include "avxmem.h"
+#include "ISR.h"
 
 // GRAPHICS
 typedef struct {
@@ -504,109 +505,7 @@ typedef struct __attribute__ ((packed)) {
  UINT32 Reserved;
 } IDT_GATE_STRUCT; // Interrupt and trap gates use this format
 
-// Intel Architecture Manual Vol. 3A, Fig. 6-4 (Stack Usage on Transfers to Interrupt and Exception-Handling Routines)
-// and Fig. 6-8 (IA-32e Mode Stack Usage After Privilege Level Change)
-// Note the order of these structs with respect to the stack. Note that 64-bit pushes SS:RSP unconditionally.
-typedef struct __attribute__ ((packed)) {
-  UINT64 rip;
-  UINT64 cs;
-  UINT64 rflags;
-  UINT64 rsp;
-  UINT64 ss;
-} INTERRUPT_FRAME_X64;
-
-// Exception codes are pushed before rip (and so get popped first)
-typedef struct __attribute__ ((packed)) {
-  UINT64 error_code;
-  UINT64 rip;
-  UINT64 cs;
-  UINT64 rflags;
-  UINT64 rsp;
-  UINT64 ss;
-} EXCEPTION_FRAME_X64;
-
-// The below interrupt frames and regdump structure are set up by ISR.S
-
-// ISRs save the state up to where the ISR was called, so a regdump is accessible
-// Though this might not always be needed, a minimal ISR is only 5 registers away from a full dump anyways, so might as well just get the whole thing.
-typedef struct __attribute__ ((packed)) {
-  UINT64 rax;
-  UINT64 rbx;
-  UINT64 rcx;
-  UINT64 rdx;
-  UINT64 rsi;
-  UINT64 rdi;
-  UINT64 r8;
-  UINT64 r9;
-  UINT64 r10;
-  UINT64 r11;
-  UINT64 r12;
-  UINT64 r13;
-  UINT64 r14;
-  UINT64 r15;
-  UINT64 rbp;
-} GENERAL_REGDUMP;
-
-// All-in-one structure for interrupts
-typedef struct __attribute__ ((packed)) {
-  // Register save pushed by ISR.S
-  UINT64 rax;
-  UINT64 rbx;
-  UINT64 rcx;
-  UINT64 rdx;
-  UINT64 rsi;
-  UINT64 rdi;
-  UINT64 rbp;
-  UINT64 r8;
-  UINT64 r9;
-  UINT64 r10;
-  UINT64 r11;
-  UINT64 r12;
-  UINT64 r13;
-  UINT64 r14;
-  UINT64 r15;
-
-  UINT64 isr_num; // ISR identification number pushed by ISR.S
-
-  // Standard x86-64 interrupt stack frame
-  UINT64 rip;
-  UINT64 cs;
-  UINT64 rflags;
-  UINT64 rsp;
-  UINT64 ss;
-} INTERRUPT_FRAME;
-
-// All-in-one structure for exceptions
-typedef struct __attribute__ ((packed)) {
-  // Register save pushed by ISR.S
-  UINT64 rax;
-  UINT64 rbx;
-  UINT64 rcx;
-  UINT64 rdx;
-  UINT64 rsi;
-  UINT64 rdi;
-  UINT64 rbp;
-  UINT64 r8;
-  UINT64 r9;
-  UINT64 r10;
-  UINT64 r11;
-  UINT64 r12;
-  UINT64 r13;
-  UINT64 r14;
-  UINT64 r15;
-
-  UINT64 isr_num; // ISR identification number pushed by ISR.S
-  UINT64 error_code; // Exception error code pushed by CPU
-
-  // Standard x86-64 interrupt stack frame
-  UINT64 rip;
-  UINT64 cs;
-  UINT64 rflags;
-  UINT64 rsp;
-  UINT64 ss;
-} EXCEPTION_FRAME;
-
-// TODO AVX ISR and EXC frames
+// See ISR.h for interrupt structures
 
 //----------------------------------------------------------------------------------------------------------------------------------
 //  Function Prototypes
@@ -654,9 +553,9 @@ char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-by
 char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
-void AVX_ISR_handler(INTERRUPT_FRAME * i_frame); // TODO AVX frame
+void AVX_ISR_handler(AVX_INTERRUPT_FRAME * i_frame); // TODO AVX frame
 void ISR_handler(INTERRUPT_FRAME * i_frame);
-void AVX_EXC_handler(EXCEPTION_FRAME * e_frame); // TODO AVX frame
+void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame); // TODO AVX frame
 void EXC_handler(EXCEPTION_FRAME * e_frame);
 
 // NOTE: Not in System.c, these functions are in Kernel64.c.
