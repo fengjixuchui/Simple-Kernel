@@ -12,23 +12,25 @@
 //
 // This file provides structures for interrupt handlers, and they reflect the stack as set up in ISR.S.
 //
+// *How to Add/Modify a User-Defined Interrupt:*
+//
 // To add an interrupt or exception (here, exception refers to interrupt with error code--not "the first 32 entries in the IDT"):
 //
 //  1) Ensure the macro used in ISR.S is correct for the desired interrupt number
 //  2) Ensure the extern references the correct function at the bottom of this file
-//  3) In the Setup_IDT() function in System.c, ensure set_interrupt_ISR() is correct for the desired interrupt number (if you want
-//     a trap instead, call set_trap_ISR() instead of set_interrupt_ISR() with the same arguments)
+//  3) In the Setup_IDT() function in System.c, ensure set_interrupt_entry() is correct for the desired interrupt number (if you want
+//     a trap instead, call set_trap_entry() instead of set_interrupt_entry() with the same arguments)
 //  4) Add a "case (interrupt number):" statement in the correct handler function in System.c
 //
 // These are the 4 pathways for handlers, depending on which outcome is desired (just replace "(num)" with a number 32-255, since 0-31 are architecturally reserved):
 //
-//  a. AVX_ISR_MACRO (num) --> extern void avx_isr_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)avx_isr_pusher(num) ) --> "case (num):" in AVX_ISR_handler()
-//  b. ISR_MACRO (num) --> extern void isr_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)isr_pusher(num) ) --> "case (num):" in ISR_handler()
-//  c. AVX_EXC_MACRO (num) --> extern void avx_exc_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)avx_exc_pusher(num) ) --> "case (num):" in AVX_EXC_handler()
-//  d. EXC_MACRO (num) --> extern void exc_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)exc_pusher(num) ) --> "case (num):" in EXC_handler()
+//  a. AVX_ISR_MACRO (num) --> extern void avx_isr_pusher(num) --> set_interrupt_entry( (num), (uint64_t)avx_isr_pusher(num) ) --> "case (num):" in AVX_ISR_handler()
+//  b. ISR_MACRO (num) --> extern void isr_pusher(num) --> set_interrupt_entry( (num), (uint64_t)isr_pusher(num) ) --> "case (num):" in ISR_handler()
+//  c. AVX_EXC_MACRO (num) --> extern void avx_exc_pusher(num) --> set_interrupt_entry( (num), (uint64_t)avx_exc_pusher(num) ) --> "case (num):" in AVX_EXC_handler()
+//  d. EXC_MACRO (num) --> extern void exc_pusher(num) --> set_interrupt_entry( (num), (uint64_t)exc_pusher(num) ) --> "case (num):" in EXC_handler()
 //
-// Note again that set_interrupt_ISR() can be replaced by set_trap_ISR() if desired. The difference is that traps don't clear IF in
-// rflags, allowing interrupts to potentially trigger during other interrupts instead of double-faulting.
+// Note again that set_interrupt_entry() can be replaced by set_trap_entry() if desired. The difference is that traps don't clear IF in
+// %rflags, which allows maskable interrupts to trigger during other interrupts instead of double-faulting.
 //
 
 #ifndef _ISR_H
@@ -494,9 +496,9 @@ typedef struct __attribute__ ((packed)) {
 // References to functions defined in ISR.h //
 //------------------------------------------//
 
-// Don't have anything using these 2 currently
+// Don't have anything using non-AVX currently
 //extern void isr_pusher0();
-//extern void exc_pusher0();
+//extern void exc_pusher8();
 
 //
 // Predefined System Interrupts and Exceptions
@@ -529,6 +531,8 @@ extern void avx_isr_pusher18(); // Abort #MC: Machine Check
 extern void avx_isr_pusher19(); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
 extern void avx_isr_pusher20(); // Fault #VE: Virtualization Exception
 
+extern void avx_exc_pusher30(); // Fault #SX: Security Exception
+
 //
 // These are system reserved, if they trigger they will go to unhandled interrupt error
 //
@@ -544,7 +548,7 @@ extern void avx_isr_pusher26();
 extern void avx_isr_pusher27();
 extern void avx_isr_pusher28();
 extern void avx_isr_pusher29();
-extern void avx_isr_pusher30();
+
 extern void avx_isr_pusher31();
 
 //

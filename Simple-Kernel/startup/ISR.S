@@ -27,7 +27,9 @@
 // inter-privilege level changes do not even apply--great since those could easily double the number of functions needed--and that the
 // stack frame is auto-aligned by the CPU to 16-bytes since %rsp is pushed unconditionally.
 //
-// ..Ok, technically there are 4 kinds of interrupt/exception callers here, since each one has an AVX/SSE and non-AVX/SSE version.
+// ...Ok, technically there are 4 kinds of interrupt/exception callers here, since each one has an AVX/SSE and non-AVX/SSE version.
+//
+// See ISR.h for a step-by-step on how to add/modify a user-defined interrupt.
 //
 
 .extern AVX_ISR_handler
@@ -355,7 +357,7 @@ isr_pusher\num\():
 .endm
 
 //
-// Exceptions (no AVX, have error code)
+// Exceptions (AVX, have error code)
 //
 
 .macro AVX_EXC_MACRO num:req
@@ -372,12 +374,12 @@ avx_exc_pusher\num\():
   movl $0, %eax // Stack trace end
   callq AVX_EXC_handler
   RESTORE_AVX_ISR_REGISTERS
-  addq $8, %rsp
+  addq $16, %rsp // For isr_num and error code
   iretq
 .endm
 
 //
-// Exceptions (AVX, have error code)
+// Exceptions (no AVX, have error code)
 //
 
 .macro EXC_MACRO num:req
@@ -394,7 +396,7 @@ exc_pusher\num\():
   movl $0, %eax // Stack trace end
   callq EXC_handler
   RESTORE_ISR_REGISTERS
-  addq $8, %rsp
+  addq $16, %rsp // For isr_num and error code
   iretq
 .endm
 
@@ -433,6 +435,8 @@ AVX_ISR_MACRO 18 // Abort #MC: Machine Check
 AVX_ISR_MACRO 19 // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
 AVX_ISR_MACRO 20 // Fault #VE: Virtualization Exception
 
+AVX_EXC_MACRO 30 // Fault #SX: Security Exception
+
 //
 // These are system reserved, if they trigger they will go to unhandled interrupt error
 //
@@ -448,7 +452,7 @@ AVX_ISR_MACRO 26
 AVX_ISR_MACRO 27
 AVX_ISR_MACRO 28
 AVX_ISR_MACRO 29
-AVX_ISR_MACRO 30
+
 AVX_ISR_MACRO 31
 
 //

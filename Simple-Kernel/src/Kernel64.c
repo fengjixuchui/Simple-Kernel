@@ -65,7 +65,8 @@
 // Stack size defined in number of bytes, e.g. (1 << 12) is 4kiB, (1 << 20) is 1MiB
 #define STACK_SIZE (1 << 20)
 
-static unsigned char kernel_stack[STACK_SIZE] = {0};
+// This might allow for occasional slight performance increases. Not guaranteed to always happen, but aligning this to 64 bytes increases the probability.
+__attribute__((aligned(64))) static volatile unsigned char kernel_stack[STACK_SIZE] = {0};
 
 // The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
 static const unsigned char load_image[48] = {
@@ -608,10 +609,6 @@ void Print_Segment_Registers(void)
 
   uint64_t cs = read_cs();
   printf("CS: %#qx\r\n", cs);
-
-  __m256i_u whaty = _mm256_set1_epi32(0x17);
-  asm volatile("vmovdqu %[what], %%ymm4" : : [what] "m" (whaty) :);
-  volatile uint64_t c = cs / (cs >> 10); // force divide by zero error // TODO: remove this, lol
 }
 
 ////////////////////////////////////////////////////

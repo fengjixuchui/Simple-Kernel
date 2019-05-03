@@ -18,9 +18,13 @@
 #include "Kernel64.h"
 
 static void cs_update(void);
-static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr);
-static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr);
-static void set_unused_ISR(uint64_t isr_num);
+static void set_interrupt_entry(uint64_t isr_num, uint64_t isr_addr);
+static void set_trap_entry(uint64_t isr_num, uint64_t isr_addr);
+static void set_unused_entry(uint64_t isr_num);
+static void set_NMI_interrupt_entry(uint64_t isr_num, uint64_t isr_addr);
+static void set_DF_interrupt_entry(uint64_t isr_num, uint64_t isr_addr);
+static void set_MC_interrupt_entry(uint64_t isr_num, uint64_t isr_addr);
+static void set_BP_interrupt_entry(uint64_t isr_num, uint64_t isr_addr);
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // System_Init: Initial Setup
@@ -66,6 +70,19 @@ void System_Init(LOADER_PARAMS * LP)
       printf("Error setting CR0.NE bit.\r\n");
     }
   }
+  // Same with CR4.OSXMMEXCPT for SIMD errors
+  uint64_t cr4 = control_register_rw(4, 0, 0);
+  if(!(cr4 & (1 << 10)))
+  {
+    uint64_t cr4_2 = cr4 ^ (1 << 10);
+    control_register_rw(4, cr4_2, 1);
+    cr4_2 = control_register_rw(4, 0, 0);
+    if(cr4_2 == cr4)
+    {
+      printf("Error setting CR4.OSXMMEXCEPT bit.\r\n");
+    }
+  }
+
 // TODO: print memmap before and after to test
   print_system_memmap();
 
@@ -1363,7 +1380,7 @@ void set_tsr(uint16_t tsr_data)
 
 // This is the whole GDT. See the commented code in Setup_MinimalGDT() for specific details.
 static uint64_t MinimalGDT[5] = {0, 0x00af9a000000ffff, 0x00cf92000000ffff, 0x0080890000000067, 0};
-static volatile TSS64_STRUCT tss64 = {0}; // This is static, so this structure can only be read by functions defined in this .c file
+static TSS64_STRUCT tss64 = {0}; // This is static, so this structure can only be read by functions defined in this .c file
 
 void Setup_MinimalGDT(void)
 {
@@ -1375,13 +1392,13 @@ void Setup_MinimalGDT(void)
   uint8_t  tss64_base3 = (uint8_t)(tss64_addr >> 24);
   uint32_t tss64_base4 = (uint32_t)(tss64_addr >> 32);
 
-//  printf("TSS Addr check: %#qx, %#hx, %#hhx, %#hhx, %#x\r\n", tss64_addr, tss64_base1, tss64_base2, tss64_base3, tss64_base4);
+//DEBUG: // printf("TSS Addr check: %#qx, %#hx, %#hhx, %#hhx, %#x\r\n", tss64_addr, tss64_base1, tss64_base2, tss64_base3, tss64_base4);
 
   gdt_reg_data.Limit = sizeof(MinimalGDT) - 1;
   // By having MinimalGDT global, the pointer will be in EfiLoaderData.
   gdt_reg_data.BaseAddress = (uint64_t)MinimalGDT;
 
-/* // The below code was originally written for GDT_ENTRY_STRUCT MinimalGDT[] instead of the static array above, and is left here to explain each entry's values
+/* // The below code is left here to explain each entry's values in the above static global MinimalGDT
   // 4 entries: Null, code, data, TSS
 
   // Null
@@ -1421,7 +1438,7 @@ void Setup_MinimalGDT(void)
   ( (TSS_LDT_ENTRY_STRUCT*) &((GDT_ENTRY_STRUCT*)MinimalGDT)[3] )->BaseAddress4 = tss64_base4; // TSS is a double-sized entry
   // Dang that looks pretty nuts.
 
-//  printf("MinimalGDT: %#qx : %#qx, %#qx, %#qx, %#qx, %#qx ; reg_data: %#qx, Limit: %hu\r\n", (uint64_t)MinimalGDT, ((uint64_t*)MinimalGDT)[0], ((uint64_t*)MinimalGDT)[1], ((uint64_t*)MinimalGDT)[2], ((uint64_t*)MinimalGDT)[3], ((uint64_t*)MinimalGDT)[4], gdt_reg_data.BaseAddress, gdt_reg_data.Limit);
+//DEBUG: // printf("MinimalGDT: %#qx : %#qx, %#qx, %#qx, %#qx, %#qx ; reg_data: %#qx, Limit: %hu\r\n", (uint64_t)MinimalGDT, ((uint64_t*)MinimalGDT)[0], ((uint64_t*)MinimalGDT)[1], ((uint64_t*)MinimalGDT)[2], ((uint64_t*)MinimalGDT)[3], ((uint64_t*)MinimalGDT)[4], gdt_reg_data.BaseAddress, gdt_reg_data.Limit);
   set_gdtr(gdt_reg_data);
   set_tsr(0x18); // TSS segment is at index 3, and 0x18 >> 3 is 3. 0x18 is 24 in decimal.
   cs_update();
@@ -1491,11 +1508,52 @@ static void cs_update(void)
 
 static IDT_GATE_STRUCT IDT_data[256] = {0}; // Reserve static memory for the IDT
 
+// Special stacks. (1 << 12) is 4 kiB
+#define NMI_STACK_SIZE (1 << 12)
+#define DF_STACK_SIZE (1 << 12)
+#define MC_STACK_SIZE (1 << 12)
+#define BP_STACK_SIZE (1 << 12)
+
+// Ensuring 64-byte alignment for the AVX registers for good measure
+__attribute__((aligned(16))) static volatile unsigned char NMI_stack[NMI_STACK_SIZE] = {0};
+__attribute__((aligned(32))) static volatile unsigned char DF_stack[DF_STACK_SIZE] = {0};
+__attribute__((aligned(16))) static volatile unsigned char MC_stack[MC_STACK_SIZE] = {0};
+__attribute__((aligned(16))) static volatile unsigned char BP_stack[BP_STACK_SIZE] = {0};
+
+// TODO: IRQs from hardware (keyboard interrupts, e.g.) might need their own stack.
+
 void Setup_IDT(void)
 {
   DT_STRUCT idt_reg_data = {0};
   idt_reg_data.Limit = sizeof(IDT_data) - 1; // Max is 16 bytes * 256 entries = 4096, - 1 = 4095 or 0xfff
   idt_reg_data.BaseAddress = (uint64_t)IDT_data;
+
+  // Set up TSS for special IST switches
+  // Note: tss64 was defined in above Setup_MinimalGDT section.
+  //
+  // This is actually really important to do and not super clear in documentation:
+  // Without a separate known good stack, you'll find that calling int $0x08 will trigger a general protection exception--or a divide
+  // by zero error with no hander will triple fault. The IST mechanism ensures this does not happen. If calling a handler with int $(num)
+  // raises a general protection fault (and it's not the GPF exception 13), it might need its own stack. This is assuming that the IDT
+  // (and everything else) has been set up correctly. At the very least, it's a good idea to have separate stacks for NMI, Double Fault
+  // (#DF), Machine Check (#MC), and Debug (#BP) and thus each should have a corresponding IST entry. I found that having these 4, and
+  // aligning the main kernel stack to 64-bytes (in addition to aligning the 4 other stacks as per their instantiation above), solved a
+  // lot of head-scratching problems.
+  //
+  // There is some good documentation on 64-bit stack switching in the Linux kernel docs:
+  // https://www.kernel.org/doc/Documentation/x86/kernel-stacks
+
+  tss64.IST_1_low = (uint32_t) ((uint64_t)NMI_stack);
+  tss64.IST_1_high = (uint32_t) ( ((uint64_t)NMI_stack) >> 32 );
+
+  tss64.IST_2_low = (uint32_t) ((uint64_t)DF_stack);
+  tss64.IST_2_high = (uint32_t) ( ((uint64_t)DF_stack) >> 32 );
+
+  tss64.IST_3_low = (uint32_t) ((uint64_t)MC_stack);
+  tss64.IST_3_high = (uint32_t) ( ((uint64_t)MC_stack) >> 32 );
+
+  tss64.IST_4_low = (uint32_t) ((uint64_t)BP_stack);
+  tss64.IST_4_high = (uint32_t) ( ((uint64_t)BP_stack) >> 32 );
 
   // Set up ISRs per ISR.S layout
 
@@ -1503,50 +1561,53 @@ void Setup_IDT(void)
   // Predefined System Interrupts and Exceptions
   //
 
-  set_interrupt_ISR(0, (uint64_t)avx_isr_pusher0); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
-  set_interrupt_ISR(1, (uint64_t)avx_isr_pusher1); // Fault/Trap #DB: Debug Exception
-  set_interrupt_ISR(2, (uint64_t)avx_isr_pusher2); // NMI (Nonmaskable External Interrupt)
-  set_interrupt_ISR(3, (uint64_t)avx_isr_pusher3); // Trap #BP: Breakpoint (INT3 instruction)
-  set_interrupt_ISR(4, (uint64_t)avx_isr_pusher4); // Trap #OF: Overflow (INTO instruction)
-  set_interrupt_ISR(5, (uint64_t)avx_isr_pusher5); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
-  set_interrupt_ISR(6, (uint64_t)avx_isr_pusher6); // Fault #UD: Invalid or Undefined Opcode
-  set_interrupt_ISR(7, (uint64_t)avx_isr_pusher7); // Fault #NM: Device Not Available Exception
+  set_interrupt_entry(0, (uint64_t)avx_isr_pusher0); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+  set_interrupt_entry(1, (uint64_t)avx_isr_pusher1); // Fault/Trap #DB: Debug Exception
+  set_NMI_interrupt_entry(2, (uint64_t)avx_isr_pusher2); // NMI (Nonmaskable External Interrupt)
+  set_BP_interrupt_entry(3, (uint64_t)avx_isr_pusher3); // Trap #BP: Breakpoint (INT3 instruction)
+  set_interrupt_entry(4, (uint64_t)avx_isr_pusher4); // Trap #OF: Overflow (INTO instruction)
+  set_interrupt_entry(5, (uint64_t)avx_isr_pusher5); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+  set_interrupt_entry(6, (uint64_t)avx_isr_pusher6); // Fault #UD: Invalid or Undefined Opcode
+  set_interrupt_entry(7, (uint64_t)avx_isr_pusher7); // Fault #NM: Device Not Available Exception
 
-  set_interrupt_ISR(8, (uint64_t)avx_exc_pusher8); // Abort #DF: Double Fault (error code is always 0)
+  set_DF_interrupt_entry(8, (uint64_t)avx_exc_pusher8); // Abort #DF: Double Fault (error code is always 0)
 
-  set_interrupt_ISR(9, (uint64_t)avx_isr_pusher9); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+  set_interrupt_entry(9, (uint64_t)avx_isr_pusher9); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
 
-  set_interrupt_ISR(10, (uint64_t)avx_exc_pusher10); // Fault #TS: Invalid TSS
-  set_interrupt_ISR(11, (uint64_t)avx_exc_pusher11); // Fault #NP: Segment Not Present
-  set_interrupt_ISR(12, (uint64_t)avx_exc_pusher12); // Fault #SS: Stack Segment Fault
-  set_interrupt_ISR(13, (uint64_t)avx_exc_pusher13); // Fault #GP: General Protection
-  set_interrupt_ISR(14, (uint64_t)avx_exc_pusher14); // Fault #PF: Page Fault
+  set_interrupt_entry(10, (uint64_t)avx_exc_pusher10); // Fault #TS: Invalid TSS
 
-  set_interrupt_ISR(16, (uint64_t)avx_isr_pusher16); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+  set_interrupt_entry(11, (uint64_t)avx_exc_pusher11); // Fault #NP: Segment Not Present
+  set_interrupt_entry(12, (uint64_t)avx_exc_pusher12); // Fault #SS: Stack Segment Fault
+  set_interrupt_entry(13, (uint64_t)avx_exc_pusher13); // Fault #GP: General Protection
+  set_interrupt_entry(14, (uint64_t)avx_exc_pusher14); // Fault #PF: Page Fault
 
-  set_interrupt_ISR(17, (uint64_t)avx_exc_pusher17); // Fault #AC: Alignment Check (error code is always 0)
+  set_interrupt_entry(16, (uint64_t)avx_isr_pusher16); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
 
-  set_interrupt_ISR(18, (uint64_t)avx_isr_pusher18); // Abort #MC: Machine Check
-  set_interrupt_ISR(19, (uint64_t)avx_isr_pusher19); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
-  set_interrupt_ISR(20, (uint64_t)avx_isr_pusher20); // Fault #VE: Virtualization Exception
+  set_interrupt_entry(17, (uint64_t)avx_exc_pusher17); // Fault #AC: Alignment Check (error code is always 0)
+
+  set_MC_interrupt_entry(18, (uint64_t)avx_isr_pusher18); // Abort #MC: Machine Check
+  set_interrupt_entry(19, (uint64_t)avx_isr_pusher19); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+  set_interrupt_entry(20, (uint64_t)avx_isr_pusher20); // Fault #VE: Virtualization Exception
+
+  set_interrupt_entry(30, (uint64_t)avx_exc_pusher30); // Fault #SX: Security Exception
 
   //
   // These are system reserved, if they trigger they will go to unhandled interrupt error
   //
 
-  set_interrupt_ISR(15, (uint64_t)avx_isr_pusher15);
+  set_interrupt_entry(15, (uint64_t)avx_isr_pusher15);
 
-  set_interrupt_ISR(21, (uint64_t)avx_isr_pusher21);
-  set_interrupt_ISR(22, (uint64_t)avx_isr_pusher22);
-  set_interrupt_ISR(23, (uint64_t)avx_isr_pusher23);
-  set_interrupt_ISR(24, (uint64_t)avx_isr_pusher24);
-  set_interrupt_ISR(25, (uint64_t)avx_isr_pusher25);
-  set_interrupt_ISR(26, (uint64_t)avx_isr_pusher26);
-  set_interrupt_ISR(27, (uint64_t)avx_isr_pusher27);
-  set_interrupt_ISR(28, (uint64_t)avx_isr_pusher28);
-  set_interrupt_ISR(29, (uint64_t)avx_isr_pusher29);
-  set_interrupt_ISR(30, (uint64_t)avx_isr_pusher30);
-  set_interrupt_ISR(31, (uint64_t)avx_isr_pusher31);
+  set_interrupt_entry(21, (uint64_t)avx_isr_pusher21);
+  set_interrupt_entry(22, (uint64_t)avx_isr_pusher22);
+  set_interrupt_entry(23, (uint64_t)avx_isr_pusher23);
+  set_interrupt_entry(24, (uint64_t)avx_isr_pusher24);
+  set_interrupt_entry(25, (uint64_t)avx_isr_pusher25);
+  set_interrupt_entry(26, (uint64_t)avx_isr_pusher26);
+  set_interrupt_entry(27, (uint64_t)avx_isr_pusher27);
+  set_interrupt_entry(28, (uint64_t)avx_isr_pusher28);
+  set_interrupt_entry(29, (uint64_t)avx_isr_pusher29);
+
+  set_interrupt_entry(31, (uint64_t)avx_isr_pusher31);
 
   //
   // User-Defined Interrupts
@@ -1555,21 +1616,256 @@ void Setup_IDT(void)
   // Use non-AVX ISR/EXC_MACRO if the interrupts are guaranteed not to touch AVX registers,
   // otherwise, or if in any doubt, use AVX_ISR/EXC_MACRO. By default everything is set to AVX_ISR_MACRO.
 
-  // TODO: do this right
-  uint64_t unused_isr_min = 32; // IDT entries from this number to 255 will be set as non-present.
+  set_interrupt_entry(32, (uint64_t)avx_isr_pusher32);
+  set_interrupt_entry(33, (uint64_t)avx_isr_pusher33);
+  set_interrupt_entry(34, (uint64_t)avx_isr_pusher34);
+  set_interrupt_entry(35, (uint64_t)avx_isr_pusher35);
+  set_interrupt_entry(36, (uint64_t)avx_isr_pusher36);
+  set_interrupt_entry(37, (uint64_t)avx_isr_pusher37);
+  set_interrupt_entry(38, (uint64_t)avx_isr_pusher38);
+  set_interrupt_entry(39, (uint64_t)avx_isr_pusher39);
+  set_interrupt_entry(40, (uint64_t)avx_isr_pusher40);
+  set_interrupt_entry(41, (uint64_t)avx_isr_pusher41);
+  set_interrupt_entry(42, (uint64_t)avx_isr_pusher42);
+  set_interrupt_entry(43, (uint64_t)avx_isr_pusher43);
+  set_interrupt_entry(44, (uint64_t)avx_isr_pusher44);
+  set_interrupt_entry(45, (uint64_t)avx_isr_pusher45);
+  set_interrupt_entry(46, (uint64_t)avx_isr_pusher46);
+  set_interrupt_entry(47, (uint64_t)avx_isr_pusher47);
+  set_interrupt_entry(48, (uint64_t)avx_isr_pusher48);
+  set_interrupt_entry(49, (uint64_t)avx_isr_pusher49);
+  set_interrupt_entry(50, (uint64_t)avx_isr_pusher50);
+  set_interrupt_entry(51, (uint64_t)avx_isr_pusher51);
+  set_interrupt_entry(52, (uint64_t)avx_isr_pusher52);
+  set_interrupt_entry(53, (uint64_t)avx_isr_pusher53);
+  set_interrupt_entry(54, (uint64_t)avx_isr_pusher54);
+  set_interrupt_entry(55, (uint64_t)avx_isr_pusher55);
+  set_interrupt_entry(56, (uint64_t)avx_isr_pusher56);
+  set_interrupt_entry(57, (uint64_t)avx_isr_pusher57);
+  set_interrupt_entry(58, (uint64_t)avx_isr_pusher58);
+  set_interrupt_entry(59, (uint64_t)avx_isr_pusher59);
+  set_interrupt_entry(60, (uint64_t)avx_isr_pusher60);
+  set_interrupt_entry(61, (uint64_t)avx_isr_pusher61);
+  set_interrupt_entry(62, (uint64_t)avx_isr_pusher62);
+  set_interrupt_entry(63, (uint64_t)avx_isr_pusher63);
+  set_interrupt_entry(64, (uint64_t)avx_isr_pusher64);
+  set_interrupt_entry(65, (uint64_t)avx_isr_pusher65);
+  set_interrupt_entry(66, (uint64_t)avx_isr_pusher66);
+  set_interrupt_entry(67, (uint64_t)avx_isr_pusher67);
+  set_interrupt_entry(68, (uint64_t)avx_isr_pusher68);
+  set_interrupt_entry(69, (uint64_t)avx_isr_pusher69);
+  set_interrupt_entry(70, (uint64_t)avx_isr_pusher70);
+  set_interrupt_entry(71, (uint64_t)avx_isr_pusher71);
+  set_interrupt_entry(72, (uint64_t)avx_isr_pusher72);
+  set_interrupt_entry(73, (uint64_t)avx_isr_pusher73);
+  set_interrupt_entry(74, (uint64_t)avx_isr_pusher74);
+  set_interrupt_entry(75, (uint64_t)avx_isr_pusher75);
+  set_interrupt_entry(76, (uint64_t)avx_isr_pusher76);
+  set_interrupt_entry(77, (uint64_t)avx_isr_pusher77);
+  set_interrupt_entry(78, (uint64_t)avx_isr_pusher78);
+  set_interrupt_entry(79, (uint64_t)avx_isr_pusher79);
+  set_interrupt_entry(80, (uint64_t)avx_isr_pusher80);
+  set_interrupt_entry(81, (uint64_t)avx_isr_pusher81);
+  set_interrupt_entry(82, (uint64_t)avx_isr_pusher82);
+  set_interrupt_entry(83, (uint64_t)avx_isr_pusher83);
+  set_interrupt_entry(84, (uint64_t)avx_isr_pusher84);
+  set_interrupt_entry(85, (uint64_t)avx_isr_pusher85);
+  set_interrupt_entry(86, (uint64_t)avx_isr_pusher86);
+  set_interrupt_entry(87, (uint64_t)avx_isr_pusher87);
+  set_interrupt_entry(88, (uint64_t)avx_isr_pusher88);
+  set_interrupt_entry(89, (uint64_t)avx_isr_pusher89);
+  set_interrupt_entry(90, (uint64_t)avx_isr_pusher90);
+  set_interrupt_entry(91, (uint64_t)avx_isr_pusher91);
+  set_interrupt_entry(92, (uint64_t)avx_isr_pusher92);
+  set_interrupt_entry(93, (uint64_t)avx_isr_pusher93);
+  set_interrupt_entry(94, (uint64_t)avx_isr_pusher94);
+  set_interrupt_entry(95, (uint64_t)avx_isr_pusher95);
+  set_interrupt_entry(96, (uint64_t)avx_isr_pusher96);
+  set_interrupt_entry(97, (uint64_t)avx_isr_pusher97);
+  set_interrupt_entry(98, (uint64_t)avx_isr_pusher98);
+  set_interrupt_entry(99, (uint64_t)avx_isr_pusher99);
+  set_interrupt_entry(100, (uint64_t)avx_isr_pusher100);
+  set_interrupt_entry(101, (uint64_t)avx_isr_pusher101);
+  set_interrupt_entry(102, (uint64_t)avx_isr_pusher102);
+  set_interrupt_entry(103, (uint64_t)avx_isr_pusher103);
+  set_interrupt_entry(104, (uint64_t)avx_isr_pusher104);
+  set_interrupt_entry(105, (uint64_t)avx_isr_pusher105);
+  set_interrupt_entry(106, (uint64_t)avx_isr_pusher106);
+  set_interrupt_entry(107, (uint64_t)avx_isr_pusher107);
+  set_interrupt_entry(108, (uint64_t)avx_isr_pusher108);
+  set_interrupt_entry(109, (uint64_t)avx_isr_pusher109);
+  set_interrupt_entry(110, (uint64_t)avx_isr_pusher110);
+  set_interrupt_entry(111, (uint64_t)avx_isr_pusher111);
+  set_interrupt_entry(112, (uint64_t)avx_isr_pusher112);
+  set_interrupt_entry(113, (uint64_t)avx_isr_pusher113);
+  set_interrupt_entry(114, (uint64_t)avx_isr_pusher114);
+  set_interrupt_entry(115, (uint64_t)avx_isr_pusher115);
+  set_interrupt_entry(116, (uint64_t)avx_isr_pusher116);
+  set_interrupt_entry(117, (uint64_t)avx_isr_pusher117);
+  set_interrupt_entry(118, (uint64_t)avx_isr_pusher118);
+  set_interrupt_entry(119, (uint64_t)avx_isr_pusher119);
+  set_interrupt_entry(120, (uint64_t)avx_isr_pusher120);
+  set_interrupt_entry(121, (uint64_t)avx_isr_pusher121);
+  set_interrupt_entry(122, (uint64_t)avx_isr_pusher122);
+  set_interrupt_entry(123, (uint64_t)avx_isr_pusher123);
+  set_interrupt_entry(124, (uint64_t)avx_isr_pusher124);
+  set_interrupt_entry(125, (uint64_t)avx_isr_pusher125);
+  set_interrupt_entry(126, (uint64_t)avx_isr_pusher126);
+  set_interrupt_entry(127, (uint64_t)avx_isr_pusher127);
+  set_interrupt_entry(128, (uint64_t)avx_isr_pusher128);
+  set_interrupt_entry(129, (uint64_t)avx_isr_pusher129);
+  set_interrupt_entry(130, (uint64_t)avx_isr_pusher130);
+  set_interrupt_entry(131, (uint64_t)avx_isr_pusher131);
+  set_interrupt_entry(132, (uint64_t)avx_isr_pusher132);
+  set_interrupt_entry(133, (uint64_t)avx_isr_pusher133);
+  set_interrupt_entry(134, (uint64_t)avx_isr_pusher134);
+  set_interrupt_entry(135, (uint64_t)avx_isr_pusher135);
+  set_interrupt_entry(136, (uint64_t)avx_isr_pusher136);
+  set_interrupt_entry(137, (uint64_t)avx_isr_pusher137);
+  set_interrupt_entry(138, (uint64_t)avx_isr_pusher138);
+  set_interrupt_entry(139, (uint64_t)avx_isr_pusher139);
+  set_interrupt_entry(140, (uint64_t)avx_isr_pusher140);
+  set_interrupt_entry(141, (uint64_t)avx_isr_pusher141);
+  set_interrupt_entry(142, (uint64_t)avx_isr_pusher142);
+  set_interrupt_entry(143, (uint64_t)avx_isr_pusher143);
+  set_interrupt_entry(144, (uint64_t)avx_isr_pusher144);
+  set_interrupt_entry(145, (uint64_t)avx_isr_pusher145);
+  set_interrupt_entry(146, (uint64_t)avx_isr_pusher146);
+  set_interrupt_entry(147, (uint64_t)avx_isr_pusher147);
+  set_interrupt_entry(148, (uint64_t)avx_isr_pusher148);
+  set_interrupt_entry(149, (uint64_t)avx_isr_pusher149);
+  set_interrupt_entry(150, (uint64_t)avx_isr_pusher150);
+  set_interrupt_entry(151, (uint64_t)avx_isr_pusher151);
+  set_interrupt_entry(152, (uint64_t)avx_isr_pusher152);
+  set_interrupt_entry(153, (uint64_t)avx_isr_pusher153);
+  set_interrupt_entry(154, (uint64_t)avx_isr_pusher154);
+  set_interrupt_entry(155, (uint64_t)avx_isr_pusher155);
+  set_interrupt_entry(156, (uint64_t)avx_isr_pusher156);
+  set_interrupt_entry(157, (uint64_t)avx_isr_pusher157);
+  set_interrupt_entry(158, (uint64_t)avx_isr_pusher158);
+  set_interrupt_entry(159, (uint64_t)avx_isr_pusher159);
+  set_interrupt_entry(160, (uint64_t)avx_isr_pusher160);
+  set_interrupt_entry(161, (uint64_t)avx_isr_pusher161);
+  set_interrupt_entry(162, (uint64_t)avx_isr_pusher162);
+  set_interrupt_entry(163, (uint64_t)avx_isr_pusher163);
+  set_interrupt_entry(164, (uint64_t)avx_isr_pusher164);
+  set_interrupt_entry(165, (uint64_t)avx_isr_pusher165);
+  set_interrupt_entry(166, (uint64_t)avx_isr_pusher166);
+  set_interrupt_entry(167, (uint64_t)avx_isr_pusher167);
+  set_interrupt_entry(168, (uint64_t)avx_isr_pusher168);
+  set_interrupt_entry(169, (uint64_t)avx_isr_pusher169);
+  set_interrupt_entry(170, (uint64_t)avx_isr_pusher170);
+  set_interrupt_entry(171, (uint64_t)avx_isr_pusher171);
+  set_interrupt_entry(172, (uint64_t)avx_isr_pusher172);
+  set_interrupt_entry(173, (uint64_t)avx_isr_pusher173);
+  set_interrupt_entry(174, (uint64_t)avx_isr_pusher174);
+  set_interrupt_entry(175, (uint64_t)avx_isr_pusher175);
+  set_interrupt_entry(176, (uint64_t)avx_isr_pusher176);
+  set_interrupt_entry(177, (uint64_t)avx_isr_pusher177);
+  set_interrupt_entry(178, (uint64_t)avx_isr_pusher178);
+  set_interrupt_entry(179, (uint64_t)avx_isr_pusher179);
+  set_interrupt_entry(180, (uint64_t)avx_isr_pusher180);
+  set_interrupt_entry(181, (uint64_t)avx_isr_pusher181);
+  set_interrupt_entry(182, (uint64_t)avx_isr_pusher182);
+  set_interrupt_entry(183, (uint64_t)avx_isr_pusher183);
+  set_interrupt_entry(184, (uint64_t)avx_isr_pusher184);
+  set_interrupt_entry(185, (uint64_t)avx_isr_pusher185);
+  set_interrupt_entry(186, (uint64_t)avx_isr_pusher186);
+  set_interrupt_entry(187, (uint64_t)avx_isr_pusher187);
+  set_interrupt_entry(188, (uint64_t)avx_isr_pusher188);
+  set_interrupt_entry(189, (uint64_t)avx_isr_pusher189);
+  set_interrupt_entry(190, (uint64_t)avx_isr_pusher190);
+  set_interrupt_entry(191, (uint64_t)avx_isr_pusher191);
+  set_interrupt_entry(192, (uint64_t)avx_isr_pusher192);
+  set_interrupt_entry(193, (uint64_t)avx_isr_pusher193);
+  set_interrupt_entry(194, (uint64_t)avx_isr_pusher194);
+  set_interrupt_entry(195, (uint64_t)avx_isr_pusher195);
+  set_interrupt_entry(196, (uint64_t)avx_isr_pusher196);
+  set_interrupt_entry(197, (uint64_t)avx_isr_pusher197);
+  set_interrupt_entry(198, (uint64_t)avx_isr_pusher198);
+  set_interrupt_entry(199, (uint64_t)avx_isr_pusher199);
+  set_interrupt_entry(200, (uint64_t)avx_isr_pusher200);
+  set_interrupt_entry(201, (uint64_t)avx_isr_pusher201);
+  set_interrupt_entry(202, (uint64_t)avx_isr_pusher202);
+  set_interrupt_entry(203, (uint64_t)avx_isr_pusher203);
+  set_interrupt_entry(204, (uint64_t)avx_isr_pusher204);
+  set_interrupt_entry(205, (uint64_t)avx_isr_pusher205);
+  set_interrupt_entry(206, (uint64_t)avx_isr_pusher206);
+  set_interrupt_entry(207, (uint64_t)avx_isr_pusher207);
+  set_interrupt_entry(208, (uint64_t)avx_isr_pusher208);
+  set_interrupt_entry(209, (uint64_t)avx_isr_pusher209);
+  set_interrupt_entry(210, (uint64_t)avx_isr_pusher210);
+  set_interrupt_entry(211, (uint64_t)avx_isr_pusher211);
+  set_interrupt_entry(212, (uint64_t)avx_isr_pusher212);
+  set_interrupt_entry(213, (uint64_t)avx_isr_pusher213);
+  set_interrupt_entry(214, (uint64_t)avx_isr_pusher214);
+  set_interrupt_entry(215, (uint64_t)avx_isr_pusher215);
+  set_interrupt_entry(216, (uint64_t)avx_isr_pusher216);
+  set_interrupt_entry(217, (uint64_t)avx_isr_pusher217);
+  set_interrupt_entry(218, (uint64_t)avx_isr_pusher218);
+  set_interrupt_entry(219, (uint64_t)avx_isr_pusher219);
+  set_interrupt_entry(220, (uint64_t)avx_isr_pusher220);
+  set_interrupt_entry(221, (uint64_t)avx_isr_pusher221);
+  set_interrupt_entry(222, (uint64_t)avx_isr_pusher222);
+  set_interrupt_entry(223, (uint64_t)avx_isr_pusher223);
+  set_interrupt_entry(224, (uint64_t)avx_isr_pusher224);
+  set_interrupt_entry(225, (uint64_t)avx_isr_pusher225);
+  set_interrupt_entry(226, (uint64_t)avx_isr_pusher226);
+  set_interrupt_entry(227, (uint64_t)avx_isr_pusher227);
+  set_interrupt_entry(228, (uint64_t)avx_isr_pusher228);
+  set_interrupt_entry(229, (uint64_t)avx_isr_pusher229);
+  set_interrupt_entry(230, (uint64_t)avx_isr_pusher230);
+  set_interrupt_entry(231, (uint64_t)avx_isr_pusher231);
+  set_interrupt_entry(232, (uint64_t)avx_isr_pusher232);
+  set_interrupt_entry(233, (uint64_t)avx_isr_pusher233);
+  set_interrupt_entry(234, (uint64_t)avx_isr_pusher234);
+  set_interrupt_entry(235, (uint64_t)avx_isr_pusher235);
+  set_interrupt_entry(236, (uint64_t)avx_isr_pusher236);
+  set_interrupt_entry(237, (uint64_t)avx_isr_pusher237);
+  set_interrupt_entry(238, (uint64_t)avx_isr_pusher238);
+  set_interrupt_entry(239, (uint64_t)avx_isr_pusher239);
+  set_interrupt_entry(240, (uint64_t)avx_isr_pusher240);
+  set_interrupt_entry(241, (uint64_t)avx_isr_pusher241);
+  set_interrupt_entry(242, (uint64_t)avx_isr_pusher242);
+  set_interrupt_entry(243, (uint64_t)avx_isr_pusher243);
+  set_interrupt_entry(244, (uint64_t)avx_isr_pusher244);
+  set_interrupt_entry(245, (uint64_t)avx_isr_pusher245);
+  set_interrupt_entry(246, (uint64_t)avx_isr_pusher246);
+  set_interrupt_entry(247, (uint64_t)avx_isr_pusher247);
+  set_interrupt_entry(248, (uint64_t)avx_isr_pusher248);
+  set_interrupt_entry(249, (uint64_t)avx_isr_pusher249);
+  set_interrupt_entry(250, (uint64_t)avx_isr_pusher250);
+  set_interrupt_entry(251, (uint64_t)avx_isr_pusher251);
+  set_interrupt_entry(252, (uint64_t)avx_isr_pusher252);
+  set_interrupt_entry(253, (uint64_t)avx_isr_pusher253);
+  set_interrupt_entry(254, (uint64_t)avx_isr_pusher254);
+  set_interrupt_entry(255, (uint64_t)avx_isr_pusher255);
 
-  // Set P = 0 for unused entries; need 256 entries. CPU will triple-fault otherwise on receipt of an unused ISR.
-  for(uint64_t i = unused_isr_min; i < 256; i++)
-  {
-    set_unused_ISR(i);
-  }
+  //
+  // Gotta love spreadsheet macros for this kind of stuff.
+  // Use =$A$1&TEXT(B1,"00")&$C$1&TEXT(D1,"00")&$E$1 in Excel, with the below setup
+  // (square brackets denote a cell):
+  //
+  //          A              B                C                D    E
+  // 1 [set_interrupt_entry(] [32] [, (uint64_t)avx_isr_pusher] [32] [);]
+  // 2                      [33]                              [33]
+  // 3                      [34]                              [34]
+  // ...                     ...                               ...
+  // 255                    [255]                             [255]
+  //
+  // Drag the bottom right corner of the cell with the above macro--there should be a
+  // little square there--and grin as 224 sequential interrupt functions technomagically
+  // appear. :)
+  //
+  // Adapted from: https://superuser.com/questions/559218/increment-numbers-inside-a-string
+  //
 
   set_idtr(idt_reg_data);
 }
 
 // Set up corresponding ISR function's IDT entry
 // This is for architecturally-defined ISRs (IDT entries 0-31) and user-defined entries (32-255)
-static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr)
+static void set_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
 {
   uint16_t isr_base1 = (uint16_t)isr_addr;
   uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
@@ -1587,7 +1883,7 @@ static void set_interrupt_ISR(uint64_t isr_num, uint64_t isr_addr)
 }
 
 // This is to set up a trap gate in the IDT for a given ISR
-static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr)
+static void set_trap_entry(uint64_t isr_num, uint64_t isr_addr)
 {
   uint16_t isr_base1 = (uint16_t)isr_addr;
   uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
@@ -1605,7 +1901,7 @@ static void set_trap_ISR(uint64_t isr_num, uint64_t isr_addr)
 }
 
 // This is for unused ISRs. They need to be populated otherwise the CPU will triple fault.
-static void set_unused_ISR(uint64_t isr_num)
+static void set_unused_entry(uint64_t isr_num)
 {
   IDT_data[isr_num].Offset1 = 0;
   IDT_data[isr_num].SegmentSelector = 0x08;
@@ -1615,6 +1911,81 @@ static void set_unused_ISR(uint64_t isr_num)
   IDT_data[isr_num].Offset3 = 0;
   IDT_data[isr_num].Reserved = 0;
 }
+
+// These are special entries that make use of the IST mechanism for stack switching in 64-bit mode
+
+// Nonmaskable interrupt
+static void set_NMI_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 1; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8E; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
+// Double fault
+static void set_DF_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 2; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8E; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
+// Machine Check
+static void set_MC_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 3; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8E; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
+// Debug (INT3)
+static void set_BP_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
+{
+  uint16_t isr_base1 = (uint16_t)isr_addr;
+  uint16_t isr_base2 = (uint16_t)(isr_addr >> 16);
+  uint32_t isr_base3 = (uint32_t)(isr_addr >> 32);
+
+  IDT_data[isr_num].Offset1 = isr_base1; // CS base is 0, so offset becomes the base address of ISR (interrupt service routine)
+  IDT_data[isr_num].SegmentSelector = 0x08; // 64-bit code segment in GDT
+  IDT_data[isr_num].ISTandZero = 4; // IST of 0 uses "modified legacy stack switch mechanism" (Intel Architecture Manual Vol. 3A, Section 6.14.4 Stack Switching in IA-32e Mode)
+  // IST = 0 only matters for inter-privilege level changes that arise from interrrupts--keeping the same level doesn't switch stacks
+  // IST = 1-7 would apply regardless of privilege level.
+  IDT_data[isr_num].Misc = 0x8E; // 0x8E for interrupt (clears IF in RFLAGS), 0x8F for trap (does not clear IF in RFLAGS), P=1, DPL=0, S=0
+  IDT_data[isr_num].Offset2 = isr_base2;
+  IDT_data[isr_num].Offset3 = isr_base3;
+  IDT_data[isr_num].Reserved = 0;
+}
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Setup_Paging: Set Up Paging Structures
@@ -1627,7 +1998,7 @@ static void set_unused_ISR(uint64_t isr_num)
 
 void Setup_Paging(void)
 {
-  //TODO, can reclaim bootsrvdata after [_] this, [V] GDT, and [_] IDT
+  //TODO, can reclaim bootsrvdata after [_] this, [V] GDT, and [V] IDT
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -2092,45 +2463,119 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 //
 // Various interrupts and exception handlers are defined here
 //
+// Remember, the Intel Architecture Manual calls interrupts 0-31 "Exceptions" and 32-255 "Interrupts"...At least most of the time.
+// This software calls interrupts without error codes "Interrupts" (labeled ISR) and with error codes "Exceptions" (labeled EXC)--this
+// is what GCC does, as well. So, yes, some interrupts have a message that says "... Exception!" despite being handled in ISR code.
+// Not much to be done about that.
+//
 
-// TODO
+//
+// Interrupts (AVX, no error code)
+//
+
 void AVX_ISR_handler(AVX_INTERRUPT_FRAME * i_frame)
 {
   switch(i_frame->isr_num)
   {
+
+    //
+    // Predefined System Interrupts and Exceptions
+    //
+
     case 0:
-      printf("Fault #DE: Divide by Zero! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      printf("Fault #DE: Divide Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
       AVX_ISR_regdump(i_frame);
       asm volatile("hlt");
       break;
     case 1:
-    case 2:
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 7:
-    case 9:
-    case 16:
-    case 18:
-    case 19:
-    case 20:
+      printf("Fault/Trap #DB: Debug Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
       break;
-      //TODO set these up
+    case 2:
+      printf("NMI: Nonmaskable Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 3:
+      printf("Trap #BP: Breakpoint! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 4:
+      printf("Trap #OF: Overflow! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 5:
+      printf("Fault #BR: BOUND Range Exceeded! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 6:
+      printf("Fault #UD: Invalid or Undefined Opcode! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 7:
+      printf("Fault #NM: Device Not Available Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+// 8 is in AVX EXC
+    case 9:
+      printf("Fault (i386): Coprocessor Segment Overrun! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+// 10-14 are in AVX EXC
+// 15 is reserved and will invoke the default error
+    case 16:
+      printf("Fault #MF: x87 Math Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+// 17 is in AVX EXC
+    case 18:
+      printf("Abort #MC: Machine Check! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 19:
+      printf("Fault #XM: SIMD Floating-Point Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+    case 20:
+      printf("Fault #VE: Virtualization Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+      AVX_ISR_regdump(i_frame);
+      asm volatile("hlt");
+      break;
+// 21-31 are reserved and will invoke the default error
 
-    // User-defined interrupt entries are 32-255
-//    case 32: // User-defined minimum case number
-    // ....
+    //
+    // User-Defined Interrupts
+    //
+
+//    case 32: // Minimum allowed user-defined case number
+//    // Case 32 code
+//      break;
+//    ....
 //    case 255: // Maximum allowed case number
+//    // Case 255 code
+//      break;
 
-    // 15, 21-31 are reserved and will get the unhandled error if they are thrown
     default:
-      printf("AVX_ISR_handler: Unhandled Interrupt! IDT Entry: %#qx\r\n", i_frame->isr_num);
+      printf("AVX_ISR_handler: Unhandled Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
       AVX_ISR_regdump(i_frame);
       asm volatile("hlt");
       break;
   }
 }
+
+//
+// Interrupts (no AVX, no error code)
+//
 
 void ISR_handler(INTERRUPT_FRAME * i_frame)
 {
@@ -2140,34 +2585,85 @@ void ISR_handler(INTERRUPT_FRAME * i_frame)
     // For small things that are guaranteed not to touch avx regs
 
     default:
-      printf("ISR_handler: Unhandled Interrupt! IDT Entry: %#qx\r\n", i_frame->isr_num);
+      printf("ISR_handler: Unhandled Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
       ISR_regdump(i_frame);
       asm volatile("hlt");
       break;
   }
 }
 
+//
+// Exceptions (AVX, have error code)
+//
+
 void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame)
 {
   switch(e_frame->isr_num)
   {
-    case 8:
-    case 10:
-    case 11:
-    case 12:
-    case 13:
-    case 14:
-    case 17:
-      break;
-      // TODO: set these up
 
+    //
+    // Predefined System Interrupts and Exceptions
+    //
+
+// 0-7 are in AVX ISR
+    case 8:
+      printf("Abort #DF: Double Fault! IDT Entry: %#qu, Error Code (always 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+// 9 is in AVX ISR
+    case 10:
+      printf("Fault #TS: Invalid TSS! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+    case 11:
+      printf("Fault #NP: Segment Not Present! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+    case 12:
+      printf("Fault #SS: Stack Segment Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+    case 13:
+      printf("Fault #GP: General Protection! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+    case 14:
+      printf("Fault #PF: Page Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+// 15 is reserved in AVX ISR
+// 16 is in AVX ISR
+    case 17:
+      printf("Fault #AC: Alignment Check! IDT Entry: %#qu, Error Code (always 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+// 18-20 are in AVX ISR
+// 21-29 are reserved in AVX ISR
+    case 30:
+      printf("Fault #SX: Security Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      AVX_EXC_regdump(e_frame);
+      asm volatile("hlt");
+      break;
+// 31 is reserved in AVX ISR
+// 32-255 default to AVX ISR
     default:
-      printf("AVX_EXC_handler: Unhandled Exception! IDT Entry: %#qx, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      printf("AVX_EXC_handler: Unhandled Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
       AVX_EXC_regdump(e_frame);
       asm volatile("hlt");
       break;
   }
 }
+
+//
+// Exceptions (no AVX, have error code)
+//
 
 void EXC_handler(EXCEPTION_FRAME * e_frame)
 {
@@ -2177,7 +2673,7 @@ void EXC_handler(EXCEPTION_FRAME * e_frame)
     // For small things that are guaranteed not to touch avx regs
 
     default:
-      printf("EXC_handler: Unhandled Exception! IDT Entry: %#qx, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      printf("EXC_handler: Unhandled Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
       EXC_regdump(e_frame);
       asm volatile("hlt");
       break;
@@ -2188,7 +2684,14 @@ void EXC_handler(EXCEPTION_FRAME * e_frame)
 // Interrupt Support Functions: Helpers for Interrupt and Exception Handlers
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Various interrupt and exception support functions are defined here, e.g. register dumps
+// Various interrupt and exception support functions are defined here, e.g. register dumps.
+// Functions here strictly correspond to their similarly-named interrupt handlers.
+//
+// *Do not mix them* as the data structures are all different, which would put values in the wrong places.
+//
+
+//
+// Interrupts (AVX, no error code)
 //
 
 void AVX_ISR_regdump(AVX_INTERRUPT_FRAME * i_frame)
@@ -2275,6 +2778,10 @@ void AVX_ISR_regdump(AVX_INTERRUPT_FRAME * i_frame)
 #endif
 }
 
+//
+// Interrupts (no AVX, no error code)
+//
+
 void ISR_regdump(INTERRUPT_FRAME * i_frame)
 {
   printf("rax: %#qx, rbx: %#qx, rcx: %#qx, rdx: %#qx, rsi: %#qx, rdi: %#qx\r\n", i_frame->rax, i_frame->rbx, i_frame->rcx, i_frame->rdx, i_frame->rsi, i_frame->rdi);
@@ -2282,6 +2789,10 @@ void ISR_regdump(INTERRUPT_FRAME * i_frame)
   printf("r14: %#qx, r15: %#qx, rbp: %#qx, rip: %#qx, cs: %#qx, rflags: %#qx\r\n", i_frame->r14, i_frame->r15, i_frame->rbp, i_frame->rip, i_frame->cs, i_frame->rflags);
   printf("rsp: %#qx, ss: %#qx\r\n", i_frame->rsp, i_frame->ss);
 }
+
+//
+// Exceptions (AVX, have error code)
+//
 
 void AVX_EXC_regdump(AVX_EXCEPTION_FRAME * e_frame)
 {
@@ -2366,6 +2877,10 @@ void AVX_EXC_regdump(AVX_EXCEPTION_FRAME * e_frame)
   printf("XMM15: 0x%016qx%016qx\r\n", e_frame->xmm15[0], e_frame->xmm15[1]);
 #endif
 }
+
+//
+// Exceptions (no AVX, have error code)
+//
 
 void EXC_regdump(EXCEPTION_FRAME * e_frame)
 {
