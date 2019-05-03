@@ -2640,7 +2640,7 @@ void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame)
 // 15 is reserved in AVX ISR
 // 16 is in AVX ISR
     case 17:
-      printf("Fault #AC: Alignment Check! IDT Entry: %#qu, Error Code (always 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+      printf("Fault #AC: Alignment Check! IDT Entry: %#qu, Error Code (usually 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
       AVX_EXC_regdump(e_frame);
       asm volatile("hlt");
       break;
