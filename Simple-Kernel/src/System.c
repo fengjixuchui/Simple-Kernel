@@ -1515,12 +1515,21 @@ static IDT_GATE_STRUCT IDT_data[256] = {0}; // Reserve static memory for the IDT
 #define BP_STACK_SIZE (1 << 12)
 
 // Ensuring 64-byte alignment for the AVX registers for good measure
-__attribute__((aligned(16))) static volatile unsigned char NMI_stack[NMI_STACK_SIZE] = {0};
-__attribute__((aligned(32))) static volatile unsigned char DF_stack[DF_STACK_SIZE] = {0};
-__attribute__((aligned(16))) static volatile unsigned char MC_stack[MC_STACK_SIZE] = {0};
-__attribute__((aligned(16))) static volatile unsigned char BP_stack[BP_STACK_SIZE] = {0};
+__attribute__((aligned(64))) static volatile unsigned char NMI_stack[NMI_STACK_SIZE] = {0};
+__attribute__((aligned(16))) static volatile unsigned char DF_stack[DF_STACK_SIZE] = {0};
+__attribute__((aligned(64))) static volatile unsigned char MC_stack[MC_STACK_SIZE] = {0};
+__attribute__((aligned(64))) static volatile unsigned char BP_stack[BP_STACK_SIZE] = {0};
 
-// TODO: IRQs from hardware (keyboard interrupts, e.g.) might need their own stack.
+// A note about the above stack alignment numbers, focusing on the double fault handler's in particular:
+//
+// Pushing error_code + isr_num causes 16-byte offset for EXC handlers (note for ISR handlers, isr_num is pushed after AVX instead of before).
+// Unfortunately __attribute__((aligned(48))) isn't allowed, which would enable guaranteed stack alignment to 64-bytes. So aligning to 16-bytes
+// to guarantee 32-byte alignment is the next best thing. It's certainly fine for AVX2, though not ideal for AVX512 (but it is OK). In any case
+// this only really matters to the double fault handler, and since AVX handlers must use unaligned instructions it's just a micro-optimization.
+// Better to have it sometimes line up to 64 bytes than never. And yes, unaligned instructions on aligned addresses do see small performance
+// benefits. It's mentioned here: https://www.agner.org/optimize/blog/read.php?i=415
+
+// TODO: IRQs from hardware (keyboard interrupts, e.g.) might need their own stack, too.
 
 void Setup_IDT(void)
 {
