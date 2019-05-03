@@ -2,7 +2,7 @@
 //  Simple Kernel: Interrupt Structures Header
 //==================================================================================================================================
 //
-// Version 0.z
+// Version 0.9
 //
 // Author:
 //  KNNSpeed
@@ -10,7 +10,25 @@
 // Source Code:
 //  https://github.com/KNNSpeed/Simple-Kernel
 //
-// This file provides structures for interrupt handlers, and they reflect the stack as set up in ISR.S
+// This file provides structures for interrupt handlers, and they reflect the stack as set up in ISR.S.
+//
+// To add an interrupt or exception (here, exception refers to interrupt with error code--not "the first 32 entries in the IDT"):
+//
+//  1) Ensure the macro used in ISR.S is correct for the desired interrupt number
+//  2) Ensure the extern references the correct function at the bottom of this file
+//  3) In the Setup_IDT() function in System.c, ensure set_interrupt_ISR() is correct for the desired interrupt number (if you want
+//     a trap instead, call set_trap_ISR() instead of set_interrupt_ISR() with the same arguments)
+//  4) Add a "case (interrupt number):" statement in the correct handler function in System.c
+//
+// These are the 4 pathways for handlers, depending on which outcome is desired (just replace "(num)" with a number 32-255, since 0-31 are architecturally reserved):
+//
+//  a. AVX_ISR_MACRO (num) --> extern void avx_isr_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)avx_isr_pusher(num) ) --> "case (num):" in AVX_ISR_handler()
+//  b. ISR_MACRO (num) --> extern void isr_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)isr_pusher(num) ) --> "case (num):" in ISR_handler()
+//  c. AVX_EXC_MACRO (num) --> extern void avx_exc_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)avx_exc_pusher(num) ) --> "case (num):" in AVX_EXC_handler()
+//  d. EXC_MACRO (num) --> extern void exc_pusher(num) --> set_interrupt_ISR( (num), (uint64_t)exc_pusher(num) ) --> "case (num):" in EXC_handler()
+//
+// Note again that set_interrupt_ISR() can be replaced by set_trap_ISR() if desired. The difference is that traps don't clear IF in
+// rflags, allowing interrupts to potentially trigger during other interrupts instead of double-faulting.
 //
 
 #ifndef _ISR_H
@@ -471,5 +489,294 @@ typedef struct __attribute__ ((packed)) {
 } AVX_EXCEPTION_FRAME;
 
 #endif
+
+//------------------------------------------//
+// References to functions defined in ISR.h //
+//------------------------------------------//
+
+// Don't have anything using these 2 currently
+//extern void isr_pusher0();
+//extern void exc_pusher0();
+
+//
+// Predefined System Interrupts and Exceptions
+//
+
+extern void avx_isr_pusher0(); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+extern void avx_isr_pusher1(); // Fault/Trap #DB: Debug Exception
+extern void avx_isr_pusher2(); // NMI (Nonmaskable External Interrupt)
+extern void avx_isr_pusher3(); // Trap #BP: Breakpoint (INT3 instruction)
+extern void avx_isr_pusher4(); // Trap #OF: Overflow (INTO instruction)
+extern void avx_isr_pusher5(); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+extern void avx_isr_pusher6(); // Fault #UD: Invalid or Undefined Opcode
+extern void avx_isr_pusher7(); // Fault #NM: Device Not Available Exception
+
+extern void avx_exc_pusher8(); // Abort #DF: Double Fault (error code is always 0)
+
+extern void avx_isr_pusher9(); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+
+extern void avx_exc_pusher10(); // Fault #TS: Invalid TSS
+extern void avx_exc_pusher11(); // Fault #NP: Segment Not Present
+extern void avx_exc_pusher12(); // Fault #SS: Stack Segment Fault
+extern void avx_exc_pusher13(); // Fault #GP: General Protection
+extern void avx_exc_pusher14(); // Fault #PF: Page Fault
+
+extern void avx_isr_pusher16(); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+
+extern void avx_exc_pusher17(); // Fault #AC: Alignment Check (error code is always 0)
+
+extern void avx_isr_pusher18(); // Abort #MC: Machine Check
+extern void avx_isr_pusher19(); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+extern void avx_isr_pusher20(); // Fault #VE: Virtualization Exception
+
+//
+// These are system reserved, if they trigger they will go to unhandled interrupt error
+//
+
+extern void avx_isr_pusher15();
+
+extern void avx_isr_pusher21();
+extern void avx_isr_pusher22();
+extern void avx_isr_pusher23();
+extern void avx_isr_pusher24();
+extern void avx_isr_pusher25();
+extern void avx_isr_pusher26();
+extern void avx_isr_pusher27();
+extern void avx_isr_pusher28();
+extern void avx_isr_pusher29();
+extern void avx_isr_pusher30();
+extern void avx_isr_pusher31();
+
+//
+// User-Defined Interrupts
+//
+
+// Use non-AVX ISR/EXC_MACRO if the interrupts are guaranteed not to touch AVX registers,
+// otherwise, or if in any doubt, use AVX_ISR/EXC_MACRO. By default everything is set to AVX_ISR_MACRO.
+
+extern void avx_isr_pusher32();
+extern void avx_isr_pusher33();
+extern void avx_isr_pusher34();
+extern void avx_isr_pusher35();
+extern void avx_isr_pusher36();
+extern void avx_isr_pusher37();
+extern void avx_isr_pusher38();
+extern void avx_isr_pusher39();
+extern void avx_isr_pusher40();
+extern void avx_isr_pusher41();
+extern void avx_isr_pusher42();
+extern void avx_isr_pusher43();
+extern void avx_isr_pusher44();
+extern void avx_isr_pusher45();
+extern void avx_isr_pusher46();
+extern void avx_isr_pusher47();
+extern void avx_isr_pusher48();
+extern void avx_isr_pusher49();
+extern void avx_isr_pusher50();
+extern void avx_isr_pusher51();
+extern void avx_isr_pusher52();
+extern void avx_isr_pusher53();
+extern void avx_isr_pusher54();
+extern void avx_isr_pusher55();
+extern void avx_isr_pusher56();
+extern void avx_isr_pusher57();
+extern void avx_isr_pusher58();
+extern void avx_isr_pusher59();
+extern void avx_isr_pusher60();
+extern void avx_isr_pusher61();
+extern void avx_isr_pusher62();
+extern void avx_isr_pusher63();
+extern void avx_isr_pusher64();
+extern void avx_isr_pusher65();
+extern void avx_isr_pusher66();
+extern void avx_isr_pusher67();
+extern void avx_isr_pusher68();
+extern void avx_isr_pusher69();
+extern void avx_isr_pusher70();
+extern void avx_isr_pusher71();
+extern void avx_isr_pusher72();
+extern void avx_isr_pusher73();
+extern void avx_isr_pusher74();
+extern void avx_isr_pusher75();
+extern void avx_isr_pusher76();
+extern void avx_isr_pusher77();
+extern void avx_isr_pusher78();
+extern void avx_isr_pusher79();
+extern void avx_isr_pusher80();
+extern void avx_isr_pusher81();
+extern void avx_isr_pusher82();
+extern void avx_isr_pusher83();
+extern void avx_isr_pusher84();
+extern void avx_isr_pusher85();
+extern void avx_isr_pusher86();
+extern void avx_isr_pusher87();
+extern void avx_isr_pusher88();
+extern void avx_isr_pusher89();
+extern void avx_isr_pusher90();
+extern void avx_isr_pusher91();
+extern void avx_isr_pusher92();
+extern void avx_isr_pusher93();
+extern void avx_isr_pusher94();
+extern void avx_isr_pusher95();
+extern void avx_isr_pusher96();
+extern void avx_isr_pusher97();
+extern void avx_isr_pusher98();
+extern void avx_isr_pusher99();
+extern void avx_isr_pusher100();
+extern void avx_isr_pusher101();
+extern void avx_isr_pusher102();
+extern void avx_isr_pusher103();
+extern void avx_isr_pusher104();
+extern void avx_isr_pusher105();
+extern void avx_isr_pusher106();
+extern void avx_isr_pusher107();
+extern void avx_isr_pusher108();
+extern void avx_isr_pusher109();
+extern void avx_isr_pusher110();
+extern void avx_isr_pusher111();
+extern void avx_isr_pusher112();
+extern void avx_isr_pusher113();
+extern void avx_isr_pusher114();
+extern void avx_isr_pusher115();
+extern void avx_isr_pusher116();
+extern void avx_isr_pusher117();
+extern void avx_isr_pusher118();
+extern void avx_isr_pusher119();
+extern void avx_isr_pusher120();
+extern void avx_isr_pusher121();
+extern void avx_isr_pusher122();
+extern void avx_isr_pusher123();
+extern void avx_isr_pusher124();
+extern void avx_isr_pusher125();
+extern void avx_isr_pusher126();
+extern void avx_isr_pusher127();
+extern void avx_isr_pusher128();
+extern void avx_isr_pusher129();
+extern void avx_isr_pusher130();
+extern void avx_isr_pusher131();
+extern void avx_isr_pusher132();
+extern void avx_isr_pusher133();
+extern void avx_isr_pusher134();
+extern void avx_isr_pusher135();
+extern void avx_isr_pusher136();
+extern void avx_isr_pusher137();
+extern void avx_isr_pusher138();
+extern void avx_isr_pusher139();
+extern void avx_isr_pusher140();
+extern void avx_isr_pusher141();
+extern void avx_isr_pusher142();
+extern void avx_isr_pusher143();
+extern void avx_isr_pusher144();
+extern void avx_isr_pusher145();
+extern void avx_isr_pusher146();
+extern void avx_isr_pusher147();
+extern void avx_isr_pusher148();
+extern void avx_isr_pusher149();
+extern void avx_isr_pusher150();
+extern void avx_isr_pusher151();
+extern void avx_isr_pusher152();
+extern void avx_isr_pusher153();
+extern void avx_isr_pusher154();
+extern void avx_isr_pusher155();
+extern void avx_isr_pusher156();
+extern void avx_isr_pusher157();
+extern void avx_isr_pusher158();
+extern void avx_isr_pusher159();
+extern void avx_isr_pusher160();
+extern void avx_isr_pusher161();
+extern void avx_isr_pusher162();
+extern void avx_isr_pusher163();
+extern void avx_isr_pusher164();
+extern void avx_isr_pusher165();
+extern void avx_isr_pusher166();
+extern void avx_isr_pusher167();
+extern void avx_isr_pusher168();
+extern void avx_isr_pusher169();
+extern void avx_isr_pusher170();
+extern void avx_isr_pusher171();
+extern void avx_isr_pusher172();
+extern void avx_isr_pusher173();
+extern void avx_isr_pusher174();
+extern void avx_isr_pusher175();
+extern void avx_isr_pusher176();
+extern void avx_isr_pusher177();
+extern void avx_isr_pusher178();
+extern void avx_isr_pusher179();
+extern void avx_isr_pusher180();
+extern void avx_isr_pusher181();
+extern void avx_isr_pusher182();
+extern void avx_isr_pusher183();
+extern void avx_isr_pusher184();
+extern void avx_isr_pusher185();
+extern void avx_isr_pusher186();
+extern void avx_isr_pusher187();
+extern void avx_isr_pusher188();
+extern void avx_isr_pusher189();
+extern void avx_isr_pusher190();
+extern void avx_isr_pusher191();
+extern void avx_isr_pusher192();
+extern void avx_isr_pusher193();
+extern void avx_isr_pusher194();
+extern void avx_isr_pusher195();
+extern void avx_isr_pusher196();
+extern void avx_isr_pusher197();
+extern void avx_isr_pusher198();
+extern void avx_isr_pusher199();
+extern void avx_isr_pusher200();
+extern void avx_isr_pusher201();
+extern void avx_isr_pusher202();
+extern void avx_isr_pusher203();
+extern void avx_isr_pusher204();
+extern void avx_isr_pusher205();
+extern void avx_isr_pusher206();
+extern void avx_isr_pusher207();
+extern void avx_isr_pusher208();
+extern void avx_isr_pusher209();
+extern void avx_isr_pusher210();
+extern void avx_isr_pusher211();
+extern void avx_isr_pusher212();
+extern void avx_isr_pusher213();
+extern void avx_isr_pusher214();
+extern void avx_isr_pusher215();
+extern void avx_isr_pusher216();
+extern void avx_isr_pusher217();
+extern void avx_isr_pusher218();
+extern void avx_isr_pusher219();
+extern void avx_isr_pusher220();
+extern void avx_isr_pusher221();
+extern void avx_isr_pusher222();
+extern void avx_isr_pusher223();
+extern void avx_isr_pusher224();
+extern void avx_isr_pusher225();
+extern void avx_isr_pusher226();
+extern void avx_isr_pusher227();
+extern void avx_isr_pusher228();
+extern void avx_isr_pusher229();
+extern void avx_isr_pusher230();
+extern void avx_isr_pusher231();
+extern void avx_isr_pusher232();
+extern void avx_isr_pusher233();
+extern void avx_isr_pusher234();
+extern void avx_isr_pusher235();
+extern void avx_isr_pusher236();
+extern void avx_isr_pusher237();
+extern void avx_isr_pusher238();
+extern void avx_isr_pusher239();
+extern void avx_isr_pusher240();
+extern void avx_isr_pusher241();
+extern void avx_isr_pusher242();
+extern void avx_isr_pusher243();
+extern void avx_isr_pusher244();
+extern void avx_isr_pusher245();
+extern void avx_isr_pusher246();
+extern void avx_isr_pusher247();
+extern void avx_isr_pusher248();
+extern void avx_isr_pusher249();
+extern void avx_isr_pusher250();
+extern void avx_isr_pusher251();
+extern void avx_isr_pusher252();
+extern void avx_isr_pusher253();
+extern void avx_isr_pusher254();
+extern void avx_isr_pusher255();
 
 #endif /* _ISR_H */

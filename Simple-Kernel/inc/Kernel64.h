@@ -514,9 +514,6 @@ typedef struct __attribute__ ((packed)) {
 // All functions defined by files in the "src" folder
 //
 
-extern void isr_pusher0();
-extern void avx_isr_pusher0();
-
 // Initialization-related functions (System.c)
 void System_Init(LOADER_PARAMS * LP);
 
@@ -553,10 +550,17 @@ char * Get_Brandstring(uint32_t * brandstring); // "brandstring" must be a 48-by
 char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be a 13-byte array
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
-void AVX_ISR_handler(AVX_INTERRUPT_FRAME * i_frame); // TODO AVX frame
+ // For interrupt handling
+void AVX_ISR_handler(AVX_INTERRUPT_FRAME * i_frame);
 void ISR_handler(INTERRUPT_FRAME * i_frame);
-void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame); // TODO AVX frame
+void AVX_EXC_handler(AVX_EXCEPTION_FRAME * e_frame);
 void EXC_handler(EXCEPTION_FRAME * e_frame);
+ // Interrupt support functions
+void AVX_ISR_regdump(AVX_INTERRUPT_FRAME * i_frame);
+void ISR_regdump(INTERRUPT_FRAME * i_frame);
+void AVX_EXC_regdump(AVX_EXCEPTION_FRAME * e_frame);
+void EXC_regdump(EXCEPTION_FRAME * e_frame);
+
 
 // NOTE: Not in System.c, these functions are in Kernel64.c.
 void Print_All_CRs_and_Some_Major_CPU_Features(void);

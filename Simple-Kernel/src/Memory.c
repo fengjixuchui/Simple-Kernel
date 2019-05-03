@@ -248,11 +248,10 @@ void print_system_memmap(void)
   {
     if(line%20 == 0)
     {
-//      Keywait(L"\0");
-      printf("#   Memory Type                Phys Addr Start   Virt Addr Start   Num Of Pages   Attr\r\n");
+      printf("#   Memory Type                 Phys Addr Start      Virt Addr Start  Num Of Pages   Attr\r\n");
     }
 
-    printf("%2hu: %s %#016qx   %#016qx %#qx %#qx\r\n", line, mem_types[Piece->Type], Piece->PhysicalStart, Piece->VirtualStart, Piece->NumberOfPages, Piece->Attribute);
+    printf("%2hu: %s 0x%016qx   0x%016qx %#qx %#qx\r\n", line, mem_types[Piece->Type], Piece->PhysicalStart, Piece->VirtualStart, Piece->NumberOfPages, Piece->Attribute);
     line++;
   }
 }

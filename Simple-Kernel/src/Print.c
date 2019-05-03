@@ -413,6 +413,13 @@ number:
 			}
 			p = ksprintn(nbuf, num, base, &n, upper);
 			tmp = 0;
+
+			// There's weird behavior here with #. Don't use # to get 0x with zero-padding
+			// (e.g. use 0x%016qx instead, not %#016qx or %#018qx, the latter of which will pad
+			// 16 characters for nonzero numbers but zeros will have 18 characters).
+			// Same with octal: use a leading zero and don't rely on # if you want zero-padding.
+			// # works if you don't need zero padding, though.
+
 			if (sharpflag && num != 0) {
 				if (base == 8)
 					tmp++;
@@ -422,7 +429,7 @@ number:
 			if (neg)
 				tmp++;
 
-			if (!ladjust && padc == '0') // TODO: There's a bug here
+			if (!ladjust && padc == '0')
 				dwidth = width - tmp;
 			width -= tmp + imax(dwidth, n);
 			dwidth -= n;
