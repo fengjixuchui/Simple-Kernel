@@ -609,6 +609,22 @@ void Print_Segment_Registers(void)
 
   uint64_t cs = read_cs();
   printf("CS: %#qx\r\n", cs);
+
+
+  // TODO: umm.... what's up with YMM2? Seems like a question for Intel or intel community forum...
+  // I think the "easy" workaround is just "don't use ymm2"...
+  __m256i_u whaty = _mm256_set1_epi32(0x17);
+  asm volatile("vmovdqu %[what], %%ymm1" : : [what] "m" (whaty) :);
+  asm volatile("vmovdqu %[what], %%ymm2" : : [what] "m" (whaty) :); // YMM2 has some interesting stuff in it. Intel must use it for something when an interrupt happens. Looks like an address is in the upper uint64, and the last byte has a flag or something (the number 6 shows up frequently).
+  asm volatile("vmovdqu %[what], %%ymm3" : : [what] "m" (whaty) :); // Happens on all interrupts with avx. That seems like it could cause a problem with getting a hardware IRQ while doing AVX math...
+  asm volatile("vmovdqu %[what], %%ymm4" : : [what] "m" (whaty) :); // Is that what FXSAVE is for?
+  asm volatile("vmovdqu %[what], %%ymm5" : : [what] "m" (whaty) :);
+  asm volatile("vmovdqu %[what], %%ymm6" : : [what] "m" (whaty) :);
+  asm volatile("vmovdqu %[what], %%ymm7" : : [what] "m" (whaty) :);
+
+//  asm volatile ("int $56");
+
+  volatile uint64_t c = cs / (cs >> 10); // TODO: remove this lol
 }
 
 ////////////////////////////////////////////////////

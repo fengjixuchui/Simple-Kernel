@@ -1573,6 +1573,9 @@ void Setup_IDT(void)
   set_interrupt_entry(0, (uint64_t)avx_isr_pusher0); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
   set_interrupt_entry(1, (uint64_t)avx_isr_pusher1); // Fault/Trap #DB: Debug Exception
   set_NMI_interrupt_entry(2, (uint64_t)avx_isr_pusher2); // NMI (Nonmaskable External Interrupt)
+  // Fun fact: Hyper-V will send a watchdog timeout via an NMI if the system is halted for a while. Looks like it's supposed to crash the VM via
+  // triple fault if there's no handler set up. Hpyer-V-Worker logs that the VM "has encountered a watchdog timeout and was reset" in the Windows
+  // event viewer when the VM receives the NMI. Neat.
   set_BP_interrupt_entry(3, (uint64_t)avx_isr_pusher3); // Trap #BP: Breakpoint (INT3 instruction)
   set_interrupt_entry(4, (uint64_t)avx_isr_pusher4); // Trap #OF: Overflow (INTO instruction)
   set_interrupt_entry(5, (uint64_t)avx_isr_pusher5); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
