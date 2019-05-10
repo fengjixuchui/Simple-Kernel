@@ -1,9 +1,11 @@
-# Simple Kernel
+# Simple Kernel Development Framework
 A minimal, cross-platform development environment for building bare-metal x86-64 programs, kernels, and/or full operating systems on UEFI 2.x systems. It is primarily designed to make programs for use with https://github.com/KNNSpeed/Simple-UEFI-Bootloader.
 
 **Version 0.z (not considered "release-ready" until 1.0)**
 
-This build system compiles operating system kernels into native executables for the builder's platform (Windows, Mac, or Linux) that can then be loaded by the bootloader. A kernel framework, containing a software renderer, flexible text output, multi-GPU graphical support, and a whole host of low-level system control functions, is included.
+The included build system compiles operating system kernels or bare metal programs as native executables for the builder's platform (Windows, Mac, or Linux), which can then be loaded by the bootloader. A kernel framework, containing a software renderer, flexible text output, multi-GPU graphical support, and a whole host of low-level system control functions, is also included, and many of the provided support functions feature full AVX optimization for x86-64.
+
+See Simple_Kernel/inc/Kernel64.h, Simple_Kernel/inc/ISR.h, and Simple_Kernel/startup/avxmem.h for complete function listings. Detailed descriptions are provided for each function in the functions' corresponding .c files (or .S file in the case of ISRs).
 
 See "Issues" for my to-do list before hitting "official release-ready" version 1.0, and see the "Releases" tab of this project for executable demos. See the "Building an OS Kernel/Bare-Metal x86-64 Application" and "How to Build from Source" sections below for details on how to use this project.  
 
@@ -11,7 +13,7 @@ See "Issues" for my to-do list before hitting "official release-ready" version 1
 
 ## Features
 
-This project is designed to inherit all of the features provided by https://github.com/KNNSpeed/Simple-UEFI-Bootloader, in addition to the following:  
+This project is designed to inherit all of the features provided by https://github.com/KNNSpeed/Simple-UEFI-Bootloader, in addition to providing the following:  
 
 - Tons of low-level support functionality in C, like text printing and scrolling, screen drawing, and system register control and diagnostic functions  
 - AVX support ***(1)***
@@ -24,9 +26,9 @@ This project is designed to inherit all of the features provided by https://gith
 
 ## Target System Requirements  
 
-*These are the nearly same as the bootloader's requirements. If your target system can run the bootloader, and you have AVX, you're all set.*  
+*These are the nearly same as the bootloader's requirements. If your target system can run the bootloader and you have a CPU with AVX, you're all set.*  
 
-- x86-64 architecture with AVX (most Intel ix-2xxx or newer, AMD Ryzen or newer, see [the Wikipedia page on AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#CPUs_with_AVX))
+- x86-64 architecture with AVX (most Intel ix-2xxx or newer or AMD Ryzen or newer CPUs have it, see [the Wikipedia page on AVX](https://en.wikipedia.org/wiki/Advanced_Vector_Extensions#CPUs_with_AVX))
 - Secure Boot must be disabled  
 - More than 4GB RAM (though it seems to work OK with less, e.g. Hyper-V with only 1GB)  
 - A graphics card (Intel, AMD, NVidia, etc.) **with UEFI GOP support**  
