@@ -551,15 +551,13 @@ char * Get_Manufacturer_ID(char * Manufacturer_ID); // "Manufacturer_ID" must be
 void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 
  // For interrupt handling
-void AVX_ISR_handler(INTERRUPT_FRAME * i_frame);
-void ISR_handler(INTERRUPT_FRAME * i_frame);
-void AVX_EXC_handler(EXCEPTION_FRAME * e_frame);
-void EXC_handler(EXCEPTION_FRAME * e_frame);
+void User_ISR_handler(INTERRUPT_FRAME * i_frame);
+void CPU_ISR_handler(INTERRUPT_FRAME * i_frame);
+void CPU_EXC_handler(EXCEPTION_FRAME * e_frame);
  // Interrupt support functions
 void ISR_regdump(INTERRUPT_FRAME * i_frame);
 void EXC_regdump(EXCEPTION_FRAME * e_frame);
 void AVX_regdump(XSAVE_AREA_LAYOUT * layout_area);
-
 
 // NOTE: Not in System.c, these functions are in Kernel64.c.
 void Print_All_CRs_and_Some_Major_CPU_Features(void);

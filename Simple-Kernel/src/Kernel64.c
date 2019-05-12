@@ -592,7 +592,7 @@ void Print_Loader_Params(LOADER_PARAMS * LP)
 
 void Print_Segment_Registers(void)
 {
-  uint64_t cr3 = control_register_rw(3, 0, 0);
+  uint64_t cr3 = control_register_rw(3, 0, 0); // CR3 has the page directory base (bottom 12 bits of address are assumed 0)
   printf("CR3: %#qx\r\n", cr3);
 
   DT_STRUCT gdt = get_gdtr();
@@ -628,7 +628,7 @@ void Print_Segment_Registers(void)
   asm volatile("vmovdqu %[what], %%ymm15" : : [what] "m" (what9) :);
 
   volatile __m256i output = _mm256_bsrli_epi128(what2, 1);
-//  asm volatile ("int $56");
+//  asm volatile ("int $32");
 
   volatile uint64_t c = cs / (cs >> 10); // TODO: remove this lol
 }
