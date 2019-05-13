@@ -554,6 +554,40 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value);
 void User_ISR_handler(INTERRUPT_FRAME * i_frame);
 void CPU_ISR_handler(INTERRUPT_FRAME * i_frame);
 void CPU_EXC_handler(EXCEPTION_FRAME * e_frame);
+
+  // Special CPU handlers
+void DE_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+void DB_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault/Trap #DB: Debug Exception
+void NMI_ISR_handler(INTERRUPT_FRAME * i_frame); // NMI (Nonmaskable External Interrupt)
+void BP_ISR_handler(INTERRUPT_FRAME * i_frame); // Trap #BP: Breakpoint (INT3 instruction)
+void OF_ISR_handler(INTERRUPT_FRAME * i_frame); // Trap #OF: Overflow (INTO instruction)
+void BR_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+void UD_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #UD: Invalid or Undefined Opcode
+void NM_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #NM: Device Not Available Exception
+
+void DF_EXC_handler(EXCEPTION_FRAME * e_frame); // Abort #DF: Double Fault (error code is always 0)
+
+void CSO_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+
+void TS_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #TS: Invalid TSS
+void NP_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #NP: Segment Not Present
+void SS_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #SS: Stack Segment Fault
+void GP_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #GP: General Protection
+void PF_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #PF: Page Fault
+
+void MF_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+
+void AC_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #AC: Alignment Check (error code is always 0)
+
+void MC_ISR_handler(INTERRUPT_FRAME * i_frame); // Abort #MC: Machine Check
+void XM_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+void VE_ISR_handler(INTERRUPT_FRAME * i_frame); // Fault #VE: Virtualization Exception
+
+void SX_EXC_handler(EXCEPTION_FRAME * e_frame); // Fault #SX: Security Exception
+
+  // Special user-defined handlers
+// (none yet!)
+
  // Interrupt support functions
 void ISR_regdump(INTERRUPT_FRAME * i_frame);
 void EXC_regdump(EXCEPTION_FRAME * e_frame);

@@ -25,11 +25,12 @@
 // These are the 3 pathways for handlers, depending on which outcome is desired (just replace "(num)" with a number 32-255, since 0-31 are architecturally reserved):
 //
 // For user-defined notifications:
-//  a. USER_ISR_MACRO (num) --> extern void user_isr_pusher(num) --> set_interrupt_entry( (num), (uint64_t)user_isr_pusher(num) ) --> "case (num):" in User_ISR_handler()
+//  a. USER_ISR_MACRO (num) --> extern void User_ISR_pusher(num) --> set_interrupt_entry( (num), (uint64_t)User_ISR_pusher(num) ) --> "case (num):" in User_ISR_handler()
+//    >> This assumes a special dedicated handler isn't desired, otherwise the macro syntax is slightly different as described in the macro section of ISR.S.
 //
-// For CPU architectural notifications:
-//  b. CPU_ISR_MACRO (num) --> extern void cpu_isr_pusher(num) --> set_interrupt_entry( (num), (uint64_t)cpu_isr_pusher(num) ) --> "case (num):" in CPU_ISR_handler()
-//  c. CPU_EXC_MACRO (num) --> extern void cpu_exc_pusher(num) --> set_interrupt_entry( (num), (uint64_t)cpu_exc_pusher(num) ) --> "case (num):" in CPU_EXC_handler()
+// For generic CPU architectural notifications:
+//  b. CPU_ISR_MACRO (num) --> extern void CPU_ISR_pusher(num) --> set_interrupt_entry( (num), (uint64_t)CPU_ISR_pusher(num) ) --> CPU_ISR_handler()
+//  c. CPU_EXC_MACRO (num) --> extern void CPU_EXC_pusher(num) --> set_interrupt_entry( (num), (uint64_t)CPU_EXC_pusher(num) ) --> CPU_EXC_handler()
 //
 // Note again that set_interrupt_entry() can be replaced by set_trap_entry() if desired. The difference is that traps don't clear IF in
 // %rflags, which allows maskable interrupts to trigger during other interrupts instead of double-faulting.
@@ -203,52 +204,52 @@ typedef struct __attribute__((aligned(64), packed)) {
 // Predefined System Interrupts and Exceptions
 //
 
-extern void cpu_isr_pusher0(); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
-extern void cpu_isr_pusher1(); // Fault/Trap #DB: Debug Exception
-extern void cpu_isr_pusher2(); // NMI (Nonmaskable External Interrupt)
-extern void cpu_isr_pusher3(); // Trap #BP: Breakpoint (INT3 instruction)
-extern void cpu_isr_pusher4(); // Trap #OF: Overflow (INTO instruction)
-extern void cpu_isr_pusher5(); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
-extern void cpu_isr_pusher6(); // Fault #UD: Invalid or Undefined Opcode
-extern void cpu_isr_pusher7(); // Fault #NM: Device Not Available Exception
+extern void DE_ISR_pusher0(); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+extern void DB_ISR_pusher1(); // Fault/Trap #DB: Debug Exception
+extern void NMI_ISR_pusher2(); // NMI (Nonmaskable External Interrupt)
+extern void BP_ISR_pusher3(); // Trap #BP: Breakpoint (INT3 instruction)
+extern void OF_ISR_pusher4(); // Trap #OF: Overflow (INTO instruction)
+extern void BR_ISR_pusher5(); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+extern void UD_ISR_pusher6(); // Fault #UD: Invalid or Undefined Opcode
+extern void NM_ISR_pusher7(); // Fault #NM: Device Not Available Exception
 
-extern void cpu_exc_pusher8(); // Abort #DF: Double Fault (error code is always 0)
+extern void DF_EXC_pusher8(); // Abort #DF: Double Fault (error code is always 0)
 
-extern void cpu_isr_pusher9(); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+extern void CSO_ISR_pusher9(); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
 
-extern void cpu_exc_pusher10(); // Fault #TS: Invalid TSS
-extern void cpu_exc_pusher11(); // Fault #NP: Segment Not Present
-extern void cpu_exc_pusher12(); // Fault #SS: Stack Segment Fault
-extern void cpu_exc_pusher13(); // Fault #GP: General Protection
-extern void cpu_exc_pusher14(); // Fault #PF: Page Fault
+extern void TS_EXC_pusher10(); // Fault #TS: Invalid TSS
+extern void NP_EXC_pusher11(); // Fault #NP: Segment Not Present
+extern void SS_EXC_pusher12(); // Fault #SS: Stack Segment Fault
+extern void GP_EXC_pusher13(); // Fault #GP: General Protection
+extern void PF_EXC_pusher14(); // Fault #PF: Page Fault
 
-extern void cpu_isr_pusher16(); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+extern void MF_ISR_pusher16(); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
 
-extern void cpu_exc_pusher17(); // Fault #AC: Alignment Check (error code is always 0)
+extern void AC_EXC_pusher17(); // Fault #AC: Alignment Check (error code is always 0)
 
-extern void cpu_isr_pusher18(); // Abort #MC: Machine Check
-extern void cpu_isr_pusher19(); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
-extern void cpu_isr_pusher20(); // Fault #VE: Virtualization Exception
+extern void MC_ISR_pusher18(); // Abort #MC: Machine Check
+extern void XM_ISR_pusher19(); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+extern void VE_ISR_pusher20(); // Fault #VE: Virtualization Exception
 
-extern void cpu_exc_pusher30(); // Fault #SX: Security Exception
+extern void SX_EXC_pusher30(); // Fault #SX: Security Exception
 
 //
 // These are system reserved, if they trigger they will go to unhandled interrupt error
 //
 
-extern void cpu_isr_pusher15();
+extern void CPU_ISR_pusher15();
 
-extern void cpu_isr_pusher21();
-extern void cpu_isr_pusher22();
-extern void cpu_isr_pusher23();
-extern void cpu_isr_pusher24();
-extern void cpu_isr_pusher25();
-extern void cpu_isr_pusher26();
-extern void cpu_isr_pusher27();
-extern void cpu_isr_pusher28();
-extern void cpu_isr_pusher29();
+extern void CPU_ISR_pusher21();
+extern void CPU_ISR_pusher22();
+extern void CPU_ISR_pusher23();
+extern void CPU_ISR_pusher24();
+extern void CPU_ISR_pusher25();
+extern void CPU_ISR_pusher26();
+extern void CPU_ISR_pusher27();
+extern void CPU_ISR_pusher28();
+extern void CPU_ISR_pusher29();
 
-extern void cpu_isr_pusher31();
+extern void CPU_ISR_pusher31();
 
 //
 // User-Defined Interrupts
@@ -256,229 +257,229 @@ extern void cpu_isr_pusher31();
 
 // By default everything is set to USER_ISR_MACRO.
 
-extern void user_isr_pusher32();
-extern void user_isr_pusher33();
-extern void user_isr_pusher34();
-extern void user_isr_pusher35();
-extern void user_isr_pusher36();
-extern void user_isr_pusher37();
-extern void user_isr_pusher38();
-extern void user_isr_pusher39();
-extern void user_isr_pusher40();
-extern void user_isr_pusher41();
-extern void user_isr_pusher42();
-extern void user_isr_pusher43();
-extern void user_isr_pusher44();
-extern void user_isr_pusher45();
-extern void user_isr_pusher46();
-extern void user_isr_pusher47();
-extern void user_isr_pusher48();
-extern void user_isr_pusher49();
-extern void user_isr_pusher50();
-extern void user_isr_pusher51();
-extern void user_isr_pusher52();
-extern void user_isr_pusher53();
-extern void user_isr_pusher54();
-extern void user_isr_pusher55();
-extern void user_isr_pusher56();
-extern void user_isr_pusher57();
-extern void user_isr_pusher58();
-extern void user_isr_pusher59();
-extern void user_isr_pusher60();
-extern void user_isr_pusher61();
-extern void user_isr_pusher62();
-extern void user_isr_pusher63();
-extern void user_isr_pusher64();
-extern void user_isr_pusher65();
-extern void user_isr_pusher66();
-extern void user_isr_pusher67();
-extern void user_isr_pusher68();
-extern void user_isr_pusher69();
-extern void user_isr_pusher70();
-extern void user_isr_pusher71();
-extern void user_isr_pusher72();
-extern void user_isr_pusher73();
-extern void user_isr_pusher74();
-extern void user_isr_pusher75();
-extern void user_isr_pusher76();
-extern void user_isr_pusher77();
-extern void user_isr_pusher78();
-extern void user_isr_pusher79();
-extern void user_isr_pusher80();
-extern void user_isr_pusher81();
-extern void user_isr_pusher82();
-extern void user_isr_pusher83();
-extern void user_isr_pusher84();
-extern void user_isr_pusher85();
-extern void user_isr_pusher86();
-extern void user_isr_pusher87();
-extern void user_isr_pusher88();
-extern void user_isr_pusher89();
-extern void user_isr_pusher90();
-extern void user_isr_pusher91();
-extern void user_isr_pusher92();
-extern void user_isr_pusher93();
-extern void user_isr_pusher94();
-extern void user_isr_pusher95();
-extern void user_isr_pusher96();
-extern void user_isr_pusher97();
-extern void user_isr_pusher98();
-extern void user_isr_pusher99();
-extern void user_isr_pusher100();
-extern void user_isr_pusher101();
-extern void user_isr_pusher102();
-extern void user_isr_pusher103();
-extern void user_isr_pusher104();
-extern void user_isr_pusher105();
-extern void user_isr_pusher106();
-extern void user_isr_pusher107();
-extern void user_isr_pusher108();
-extern void user_isr_pusher109();
-extern void user_isr_pusher110();
-extern void user_isr_pusher111();
-extern void user_isr_pusher112();
-extern void user_isr_pusher113();
-extern void user_isr_pusher114();
-extern void user_isr_pusher115();
-extern void user_isr_pusher116();
-extern void user_isr_pusher117();
-extern void user_isr_pusher118();
-extern void user_isr_pusher119();
-extern void user_isr_pusher120();
-extern void user_isr_pusher121();
-extern void user_isr_pusher122();
-extern void user_isr_pusher123();
-extern void user_isr_pusher124();
-extern void user_isr_pusher125();
-extern void user_isr_pusher126();
-extern void user_isr_pusher127();
-extern void user_isr_pusher128();
-extern void user_isr_pusher129();
-extern void user_isr_pusher130();
-extern void user_isr_pusher131();
-extern void user_isr_pusher132();
-extern void user_isr_pusher133();
-extern void user_isr_pusher134();
-extern void user_isr_pusher135();
-extern void user_isr_pusher136();
-extern void user_isr_pusher137();
-extern void user_isr_pusher138();
-extern void user_isr_pusher139();
-extern void user_isr_pusher140();
-extern void user_isr_pusher141();
-extern void user_isr_pusher142();
-extern void user_isr_pusher143();
-extern void user_isr_pusher144();
-extern void user_isr_pusher145();
-extern void user_isr_pusher146();
-extern void user_isr_pusher147();
-extern void user_isr_pusher148();
-extern void user_isr_pusher149();
-extern void user_isr_pusher150();
-extern void user_isr_pusher151();
-extern void user_isr_pusher152();
-extern void user_isr_pusher153();
-extern void user_isr_pusher154();
-extern void user_isr_pusher155();
-extern void user_isr_pusher156();
-extern void user_isr_pusher157();
-extern void user_isr_pusher158();
-extern void user_isr_pusher159();
-extern void user_isr_pusher160();
-extern void user_isr_pusher161();
-extern void user_isr_pusher162();
-extern void user_isr_pusher163();
-extern void user_isr_pusher164();
-extern void user_isr_pusher165();
-extern void user_isr_pusher166();
-extern void user_isr_pusher167();
-extern void user_isr_pusher168();
-extern void user_isr_pusher169();
-extern void user_isr_pusher170();
-extern void user_isr_pusher171();
-extern void user_isr_pusher172();
-extern void user_isr_pusher173();
-extern void user_isr_pusher174();
-extern void user_isr_pusher175();
-extern void user_isr_pusher176();
-extern void user_isr_pusher177();
-extern void user_isr_pusher178();
-extern void user_isr_pusher179();
-extern void user_isr_pusher180();
-extern void user_isr_pusher181();
-extern void user_isr_pusher182();
-extern void user_isr_pusher183();
-extern void user_isr_pusher184();
-extern void user_isr_pusher185();
-extern void user_isr_pusher186();
-extern void user_isr_pusher187();
-extern void user_isr_pusher188();
-extern void user_isr_pusher189();
-extern void user_isr_pusher190();
-extern void user_isr_pusher191();
-extern void user_isr_pusher192();
-extern void user_isr_pusher193();
-extern void user_isr_pusher194();
-extern void user_isr_pusher195();
-extern void user_isr_pusher196();
-extern void user_isr_pusher197();
-extern void user_isr_pusher198();
-extern void user_isr_pusher199();
-extern void user_isr_pusher200();
-extern void user_isr_pusher201();
-extern void user_isr_pusher202();
-extern void user_isr_pusher203();
-extern void user_isr_pusher204();
-extern void user_isr_pusher205();
-extern void user_isr_pusher206();
-extern void user_isr_pusher207();
-extern void user_isr_pusher208();
-extern void user_isr_pusher209();
-extern void user_isr_pusher210();
-extern void user_isr_pusher211();
-extern void user_isr_pusher212();
-extern void user_isr_pusher213();
-extern void user_isr_pusher214();
-extern void user_isr_pusher215();
-extern void user_isr_pusher216();
-extern void user_isr_pusher217();
-extern void user_isr_pusher218();
-extern void user_isr_pusher219();
-extern void user_isr_pusher220();
-extern void user_isr_pusher221();
-extern void user_isr_pusher222();
-extern void user_isr_pusher223();
-extern void user_isr_pusher224();
-extern void user_isr_pusher225();
-extern void user_isr_pusher226();
-extern void user_isr_pusher227();
-extern void user_isr_pusher228();
-extern void user_isr_pusher229();
-extern void user_isr_pusher230();
-extern void user_isr_pusher231();
-extern void user_isr_pusher232();
-extern void user_isr_pusher233();
-extern void user_isr_pusher234();
-extern void user_isr_pusher235();
-extern void user_isr_pusher236();
-extern void user_isr_pusher237();
-extern void user_isr_pusher238();
-extern void user_isr_pusher239();
-extern void user_isr_pusher240();
-extern void user_isr_pusher241();
-extern void user_isr_pusher242();
-extern void user_isr_pusher243();
-extern void user_isr_pusher244();
-extern void user_isr_pusher245();
-extern void user_isr_pusher246();
-extern void user_isr_pusher247();
-extern void user_isr_pusher248();
-extern void user_isr_pusher249();
-extern void user_isr_pusher250();
-extern void user_isr_pusher251();
-extern void user_isr_pusher252();
-extern void user_isr_pusher253();
-extern void user_isr_pusher254();
-extern void user_isr_pusher255();
+extern void User_ISR_pusher32();
+extern void User_ISR_pusher33();
+extern void User_ISR_pusher34();
+extern void User_ISR_pusher35();
+extern void User_ISR_pusher36();
+extern void User_ISR_pusher37();
+extern void User_ISR_pusher38();
+extern void User_ISR_pusher39();
+extern void User_ISR_pusher40();
+extern void User_ISR_pusher41();
+extern void User_ISR_pusher42();
+extern void User_ISR_pusher43();
+extern void User_ISR_pusher44();
+extern void User_ISR_pusher45();
+extern void User_ISR_pusher46();
+extern void User_ISR_pusher47();
+extern void User_ISR_pusher48();
+extern void User_ISR_pusher49();
+extern void User_ISR_pusher50();
+extern void User_ISR_pusher51();
+extern void User_ISR_pusher52();
+extern void User_ISR_pusher53();
+extern void User_ISR_pusher54();
+extern void User_ISR_pusher55();
+extern void User_ISR_pusher56();
+extern void User_ISR_pusher57();
+extern void User_ISR_pusher58();
+extern void User_ISR_pusher59();
+extern void User_ISR_pusher60();
+extern void User_ISR_pusher61();
+extern void User_ISR_pusher62();
+extern void User_ISR_pusher63();
+extern void User_ISR_pusher64();
+extern void User_ISR_pusher65();
+extern void User_ISR_pusher66();
+extern void User_ISR_pusher67();
+extern void User_ISR_pusher68();
+extern void User_ISR_pusher69();
+extern void User_ISR_pusher70();
+extern void User_ISR_pusher71();
+extern void User_ISR_pusher72();
+extern void User_ISR_pusher73();
+extern void User_ISR_pusher74();
+extern void User_ISR_pusher75();
+extern void User_ISR_pusher76();
+extern void User_ISR_pusher77();
+extern void User_ISR_pusher78();
+extern void User_ISR_pusher79();
+extern void User_ISR_pusher80();
+extern void User_ISR_pusher81();
+extern void User_ISR_pusher82();
+extern void User_ISR_pusher83();
+extern void User_ISR_pusher84();
+extern void User_ISR_pusher85();
+extern void User_ISR_pusher86();
+extern void User_ISR_pusher87();
+extern void User_ISR_pusher88();
+extern void User_ISR_pusher89();
+extern void User_ISR_pusher90();
+extern void User_ISR_pusher91();
+extern void User_ISR_pusher92();
+extern void User_ISR_pusher93();
+extern void User_ISR_pusher94();
+extern void User_ISR_pusher95();
+extern void User_ISR_pusher96();
+extern void User_ISR_pusher97();
+extern void User_ISR_pusher98();
+extern void User_ISR_pusher99();
+extern void User_ISR_pusher100();
+extern void User_ISR_pusher101();
+extern void User_ISR_pusher102();
+extern void User_ISR_pusher103();
+extern void User_ISR_pusher104();
+extern void User_ISR_pusher105();
+extern void User_ISR_pusher106();
+extern void User_ISR_pusher107();
+extern void User_ISR_pusher108();
+extern void User_ISR_pusher109();
+extern void User_ISR_pusher110();
+extern void User_ISR_pusher111();
+extern void User_ISR_pusher112();
+extern void User_ISR_pusher113();
+extern void User_ISR_pusher114();
+extern void User_ISR_pusher115();
+extern void User_ISR_pusher116();
+extern void User_ISR_pusher117();
+extern void User_ISR_pusher118();
+extern void User_ISR_pusher119();
+extern void User_ISR_pusher120();
+extern void User_ISR_pusher121();
+extern void User_ISR_pusher122();
+extern void User_ISR_pusher123();
+extern void User_ISR_pusher124();
+extern void User_ISR_pusher125();
+extern void User_ISR_pusher126();
+extern void User_ISR_pusher127();
+extern void User_ISR_pusher128();
+extern void User_ISR_pusher129();
+extern void User_ISR_pusher130();
+extern void User_ISR_pusher131();
+extern void User_ISR_pusher132();
+extern void User_ISR_pusher133();
+extern void User_ISR_pusher134();
+extern void User_ISR_pusher135();
+extern void User_ISR_pusher136();
+extern void User_ISR_pusher137();
+extern void User_ISR_pusher138();
+extern void User_ISR_pusher139();
+extern void User_ISR_pusher140();
+extern void User_ISR_pusher141();
+extern void User_ISR_pusher142();
+extern void User_ISR_pusher143();
+extern void User_ISR_pusher144();
+extern void User_ISR_pusher145();
+extern void User_ISR_pusher146();
+extern void User_ISR_pusher147();
+extern void User_ISR_pusher148();
+extern void User_ISR_pusher149();
+extern void User_ISR_pusher150();
+extern void User_ISR_pusher151();
+extern void User_ISR_pusher152();
+extern void User_ISR_pusher153();
+extern void User_ISR_pusher154();
+extern void User_ISR_pusher155();
+extern void User_ISR_pusher156();
+extern void User_ISR_pusher157();
+extern void User_ISR_pusher158();
+extern void User_ISR_pusher159();
+extern void User_ISR_pusher160();
+extern void User_ISR_pusher161();
+extern void User_ISR_pusher162();
+extern void User_ISR_pusher163();
+extern void User_ISR_pusher164();
+extern void User_ISR_pusher165();
+extern void User_ISR_pusher166();
+extern void User_ISR_pusher167();
+extern void User_ISR_pusher168();
+extern void User_ISR_pusher169();
+extern void User_ISR_pusher170();
+extern void User_ISR_pusher171();
+extern void User_ISR_pusher172();
+extern void User_ISR_pusher173();
+extern void User_ISR_pusher174();
+extern void User_ISR_pusher175();
+extern void User_ISR_pusher176();
+extern void User_ISR_pusher177();
+extern void User_ISR_pusher178();
+extern void User_ISR_pusher179();
+extern void User_ISR_pusher180();
+extern void User_ISR_pusher181();
+extern void User_ISR_pusher182();
+extern void User_ISR_pusher183();
+extern void User_ISR_pusher184();
+extern void User_ISR_pusher185();
+extern void User_ISR_pusher186();
+extern void User_ISR_pusher187();
+extern void User_ISR_pusher188();
+extern void User_ISR_pusher189();
+extern void User_ISR_pusher190();
+extern void User_ISR_pusher191();
+extern void User_ISR_pusher192();
+extern void User_ISR_pusher193();
+extern void User_ISR_pusher194();
+extern void User_ISR_pusher195();
+extern void User_ISR_pusher196();
+extern void User_ISR_pusher197();
+extern void User_ISR_pusher198();
+extern void User_ISR_pusher199();
+extern void User_ISR_pusher200();
+extern void User_ISR_pusher201();
+extern void User_ISR_pusher202();
+extern void User_ISR_pusher203();
+extern void User_ISR_pusher204();
+extern void User_ISR_pusher205();
+extern void User_ISR_pusher206();
+extern void User_ISR_pusher207();
+extern void User_ISR_pusher208();
+extern void User_ISR_pusher209();
+extern void User_ISR_pusher210();
+extern void User_ISR_pusher211();
+extern void User_ISR_pusher212();
+extern void User_ISR_pusher213();
+extern void User_ISR_pusher214();
+extern void User_ISR_pusher215();
+extern void User_ISR_pusher216();
+extern void User_ISR_pusher217();
+extern void User_ISR_pusher218();
+extern void User_ISR_pusher219();
+extern void User_ISR_pusher220();
+extern void User_ISR_pusher221();
+extern void User_ISR_pusher222();
+extern void User_ISR_pusher223();
+extern void User_ISR_pusher224();
+extern void User_ISR_pusher225();
+extern void User_ISR_pusher226();
+extern void User_ISR_pusher227();
+extern void User_ISR_pusher228();
+extern void User_ISR_pusher229();
+extern void User_ISR_pusher230();
+extern void User_ISR_pusher231();
+extern void User_ISR_pusher232();
+extern void User_ISR_pusher233();
+extern void User_ISR_pusher234();
+extern void User_ISR_pusher235();
+extern void User_ISR_pusher236();
+extern void User_ISR_pusher237();
+extern void User_ISR_pusher238();
+extern void User_ISR_pusher239();
+extern void User_ISR_pusher240();
+extern void User_ISR_pusher241();
+extern void User_ISR_pusher242();
+extern void User_ISR_pusher243();
+extern void User_ISR_pusher244();
+extern void User_ISR_pusher245();
+extern void User_ISR_pusher246();
+extern void User_ISR_pusher247();
+extern void User_ISR_pusher248();
+extern void User_ISR_pusher249();
+extern void User_ISR_pusher250();
+extern void User_ISR_pusher251();
+extern void User_ISR_pusher252();
+extern void User_ISR_pusher253();
+extern void User_ISR_pusher254();
+extern void User_ISR_pusher255();
 
 #endif /* _ISR_H */

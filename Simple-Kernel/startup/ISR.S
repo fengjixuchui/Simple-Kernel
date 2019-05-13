@@ -32,13 +32,10 @@
 // See ISR.h for a step-by-step on how to add/modify a user-defined interrupt.
 //
 
+// Default ISR/EXC handlers, see macros section for defining unique handlers
 .extern User_ISR_handler
 .extern CPU_ISR_handler
 .extern CPU_EXC_handler
-
-// Hardware gets their own handlers, like mouse and keyboard
-//.extern Mouse_handler
-//.extern KB_handler
 
 .section .text
 
@@ -103,10 +100,14 @@
 // User-Defined Interrupts (no error code)
 //
 
-.macro USER_ISR_MACRO num:req
-.global user_isr_pusher\num
+.macro USER_ISR_MACRO num:req name=User has_special_external_handler=0
+.global \name\()_ISR_pusher\num
 
-user_isr_pusher\num\():
+.if \has_special_external_handler
+.extern \name\()_ISR_handler
+.endif // Use default external User ISR handler otherwise
+
+\name\()_ISR_pusher\num\():
   SAVE_ISR_REGISTERS
   pushq $\num // INTERRUPT_FRAME has ISR number at the base
 #ifdef __MINGW32__
@@ -115,7 +116,7 @@ user_isr_pusher\num\():
   movq %rsp, %rdi // SYSV ABI x86-64
 #endif
   movl $0, %eax // Stack trace end
-  callq User_ISR_handler
+  callq \name\()_ISR_handler
   addq $8, %rsp // For isr_num
   RESTORE_ISR_REGISTERS
   iretq
@@ -125,10 +126,15 @@ user_isr_pusher\num\():
 // CPU Interrupts (no error code)
 //
 
-.macro CPU_ISR_MACRO num:req
-.global cpu_isr_pusher\num
+.macro CPU_ISR_MACRO num:req name=CPU has_special_external_handler=0
+.global \name\()_ISR_pusher\num
 
-cpu_isr_pusher\num\():
+.if \has_special_external_handler
+.extern \name\()_ISR_handler
+.endif // Use default external CPU ISR handler otherwise
+
+
+\name\()_ISR_pusher\num\():
   SAVE_ISR_REGISTERS
   pushq $\num // INTERRUPT_FRAME has ISR number at the base
 #ifdef __MINGW32__
@@ -137,7 +143,7 @@ cpu_isr_pusher\num\():
   movq %rsp, %rdi // SYSV ABI x86-64
 #endif
   movl $0, %eax // Stack trace end
-  callq CPU_ISR_handler
+  callq \name\()_ISR_handler
   addq $8, %rsp // For isr_num
   RESTORE_ISR_REGISTERS
   iretq
@@ -147,10 +153,15 @@ cpu_isr_pusher\num\():
 // CPU Exceptions (have error code)
 //
 
-.macro CPU_EXC_MACRO num:req
-.global cpu_exc_pusher\num
+.macro CPU_EXC_MACRO num:req name=CPU has_special_external_handler=0
+.global \name\()_EXC_pusher\num
 
-cpu_exc_pusher\num\():
+.if \has_special_external_handler
+.extern \name\()_EXC_handler
+.endif // Use default external CPU EXC handler otherwise
+
+
+\name\()_EXC_pusher\num\():
   pushq $\num // Push isr_num here to maintain 16-byte alignment since we can
   SAVE_ISR_REGISTERS
 #ifdef __MINGW32__
@@ -159,7 +170,7 @@ cpu_exc_pusher\num\():
   movq %rsp, %rdi // SYSV ABI x86-64
 #endif
   movl $0, %eax // Stack trace end
-  callq CPU_EXC_handler
+  callq \name\()_EXC_handler
   RESTORE_ISR_REGISTERS
   addq $16, %rsp // For isr_num and error code
   iretq
@@ -172,35 +183,41 @@ cpu_exc_pusher\num\():
 //
 // Predefined System Interrupts and Exceptions
 //
+//
+// These all have special external handlers, which is what that extra "1" indicates.
+// The special handler format has a name of the form (name)_ISR_handler or (name)_EXC_handler, where (name) is the letters between
+// the vector number and the "1" value. If the special handler is located in this file, omit the extra "1" since it just creates a
+// .extern for the handler to indicate the handler is, for example, a C function.
+//
 
-CPU_ISR_MACRO 0 // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
-CPU_ISR_MACRO 1 // Fault/Trap #DB: Debug Exception
-CPU_ISR_MACRO 2 // NMI (Nonmaskable External Interrupt)
-CPU_ISR_MACRO 3 // Trap #BP: Breakpoint (INT3 instruction)
-CPU_ISR_MACRO 4 // Trap #OF: Overflow (INTO instruction)
-CPU_ISR_MACRO 5 // Fault #BR: BOUND Range Exceeded (BOUND instruction)
-CPU_ISR_MACRO 6 // Fault #UD: Invalid or Undefined Opcode
-CPU_ISR_MACRO 7 // Fault #NM: Device Not Available Exception
+CPU_ISR_MACRO 0 DE 1 // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+CPU_ISR_MACRO 1 DB 1 // Fault/Trap #DB: Debug Exception
+CPU_ISR_MACRO 2 NMI 1 // NMI (Nonmaskable External Interrupt)
+CPU_ISR_MACRO 3 BP 1 // Trap #BP: Breakpoint (INT3 instruction)
+CPU_ISR_MACRO 4 OF 1 // Trap #OF: Overflow (INTO instruction)
+CPU_ISR_MACRO 5 BR 1 // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+CPU_ISR_MACRO 6 UD 1 // Fault #UD: Invalid or Undefined Opcode
+CPU_ISR_MACRO 7 NM 1 // Fault #NM: Device Not Available Exception
 
-CPU_EXC_MACRO 8 // Abort #DF: Double Fault (error code is always 0)
+CPU_EXC_MACRO 8 DF 1 // Abort #DF: Double Fault (error code is always 0)
 
-CPU_ISR_MACRO 9 // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+CPU_ISR_MACRO 9 CSO 1 // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
 
-CPU_EXC_MACRO 10 // Fault #TS: Invalid TSS
-CPU_EXC_MACRO 11 // Fault #NP: Segment Not Present
-CPU_EXC_MACRO 12 // Fault #SS: Stack Segment Fault
-CPU_EXC_MACRO 13 // Fault #GP: General Protection
-CPU_EXC_MACRO 14 // Fault #PF: Page Fault
+CPU_EXC_MACRO 10 TS 1 // Fault #TS: Invalid TSS
+CPU_EXC_MACRO 11 NP 1 // Fault #NP: Segment Not Present
+CPU_EXC_MACRO 12 SS 1 // Fault #SS: Stack Segment Fault
+CPU_EXC_MACRO 13 GP 1 // Fault #GP: General Protection
+CPU_EXC_MACRO 14 PF 1 // Fault #PF: Page Fault
 
-CPU_ISR_MACRO 16 // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+CPU_ISR_MACRO 16 MF 1 // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
 
-CPU_EXC_MACRO 17 // Fault #AC: Alignment Check (error code is always 0)
+CPU_EXC_MACRO 17 AC 1 // Fault #AC: Alignment Check (error code is always 0)
 
-CPU_ISR_MACRO 18 // Abort #MC: Machine Check
-CPU_ISR_MACRO 19 // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
-CPU_ISR_MACRO 20 // Fault #VE: Virtualization Exception
+CPU_ISR_MACRO 18 MC 1 // Abort #MC: Machine Check
+CPU_ISR_MACRO 19 XM 1 // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+CPU_ISR_MACRO 20 VE 1 // Fault #VE: Virtualization Exception
 
-CPU_EXC_MACRO 30 // Fault #SX: Security Exception
+CPU_EXC_MACRO 30 SX 1 // Fault #SX: Security Exception
 
 //
 // These are system reserved, if they trigger they will go to unhandled interrupt error

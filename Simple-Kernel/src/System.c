@@ -1513,6 +1513,7 @@ __attribute__((aligned(64))) static IDT_GATE_STRUCT IDT_data[256] = {0}; // Rese
 #define DF_STACK_SIZE (1 << 12)
 #define MC_STACK_SIZE (1 << 12)
 #define BP_STACK_SIZE (1 << 12)
+// See the ISR section later in this file for XSAVE area sizes
 
 // Ensuring 64-byte alignment for good measure
 __attribute__((aligned(64))) static volatile unsigned char NMI_stack[NMI_STACK_SIZE] = {0};
@@ -1561,56 +1562,55 @@ void Setup_IDT(void)
   // Predefined System Interrupts and Exceptions
   //
 
-  set_interrupt_entry(0, (uint64_t)cpu_isr_pusher0); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
-  set_interrupt_entry(1, (uint64_t)cpu_isr_pusher1); // Fault/Trap #DB: Debug Exception
-  set_NMI_interrupt_entry(2, (uint64_t)cpu_isr_pusher2); // NMI (Nonmaskable External Interrupt)
+  set_interrupt_entry(0, (uint64_t)DE_ISR_pusher0); // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+  set_interrupt_entry(1, (uint64_t)DB_ISR_pusher1); // Fault/Trap #DB: Debug Exception
+  set_NMI_interrupt_entry(2, (uint64_t)NMI_ISR_pusher2); // NMI (Nonmaskable External Interrupt)
   // Fun fact: Hyper-V will send a watchdog timeout via an NMI if the system is halted for a while. Looks like it's supposed to crash the VM via
   // triple fault if there's no handler set up. Hpyer-V-Worker logs that the VM "has encountered a watchdog timeout and was reset" in the Windows
   // event viewer when the VM receives the NMI. Neat.
-  set_BP_interrupt_entry(3, (uint64_t)cpu_isr_pusher3); // Trap #BP: Breakpoint (INT3 instruction)
-  set_interrupt_entry(4, (uint64_t)cpu_isr_pusher4); // Trap #OF: Overflow (INTO instruction)
-  set_interrupt_entry(5, (uint64_t)cpu_isr_pusher5); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
-  set_interrupt_entry(6, (uint64_t)cpu_isr_pusher6); // Fault #UD: Invalid or Undefined Opcode
-  set_interrupt_entry(7, (uint64_t)cpu_isr_pusher7); // Fault #NM: Device Not Available Exception
+  set_BP_interrupt_entry(3, (uint64_t)BP_ISR_pusher3); // Trap #BP: Breakpoint (INT3 instruction)
+  set_interrupt_entry(4, (uint64_t)OF_ISR_pusher4); // Trap #OF: Overflow (INTO instruction)
+  set_interrupt_entry(5, (uint64_t)BR_ISR_pusher5); // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+  set_interrupt_entry(6, (uint64_t)UD_ISR_pusher6); // Fault #UD: Invalid or Undefined Opcode
+  set_interrupt_entry(7, (uint64_t)NM_ISR_pusher7); // Fault #NM: Device Not Available Exception
 
-  set_DF_interrupt_entry(8, (uint64_t)cpu_exc_pusher8); // Abort #DF: Double Fault (error code is always 0)
+  set_DF_interrupt_entry(8, (uint64_t)DF_EXC_pusher8); // Abort #DF: Double Fault (error code is always 0)
 
-  set_interrupt_entry(9, (uint64_t)cpu_isr_pusher9); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+  set_interrupt_entry(9, (uint64_t)CSO_ISR_pusher9); // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
 
-  set_interrupt_entry(10, (uint64_t)cpu_exc_pusher10); // Fault #TS: Invalid TSS
+  set_interrupt_entry(10, (uint64_t)TS_EXC_pusher10); // Fault #TS: Invalid TSS
+  set_interrupt_entry(11, (uint64_t)NP_EXC_pusher11); // Fault #NP: Segment Not Present
+  set_interrupt_entry(12, (uint64_t)SS_EXC_pusher12); // Fault #SS: Stack Segment Fault
+  set_interrupt_entry(13, (uint64_t)GP_EXC_pusher13); // Fault #GP: General Protection
+  set_interrupt_entry(14, (uint64_t)PF_EXC_pusher14); // Fault #PF: Page Fault
 
-  set_interrupt_entry(11, (uint64_t)cpu_exc_pusher11); // Fault #NP: Segment Not Present
-  set_interrupt_entry(12, (uint64_t)cpu_exc_pusher12); // Fault #SS: Stack Segment Fault
-  set_interrupt_entry(13, (uint64_t)cpu_exc_pusher13); // Fault #GP: General Protection
-  set_interrupt_entry(14, (uint64_t)cpu_exc_pusher14); // Fault #PF: Page Fault
+  set_interrupt_entry(16, (uint64_t)MF_ISR_pusher16); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
 
-  set_interrupt_entry(16, (uint64_t)cpu_isr_pusher16); // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+  set_interrupt_entry(17, (uint64_t)AC_EXC_pusher17); // Fault #AC: Alignment Check (error code is always 0)
 
-  set_interrupt_entry(17, (uint64_t)cpu_exc_pusher17); // Fault #AC: Alignment Check (error code is always 0)
+  set_MC_interrupt_entry(18, (uint64_t)MC_ISR_pusher18); // Abort #MC: Machine Check
+  set_interrupt_entry(19, (uint64_t)XM_ISR_pusher19); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+  set_interrupt_entry(20, (uint64_t)VE_ISR_pusher20); // Fault #VE: Virtualization Exception
 
-  set_MC_interrupt_entry(18, (uint64_t)cpu_isr_pusher18); // Abort #MC: Machine Check
-  set_interrupt_entry(19, (uint64_t)cpu_isr_pusher19); // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
-  set_interrupt_entry(20, (uint64_t)cpu_isr_pusher20); // Fault #VE: Virtualization Exception
-
-  set_interrupt_entry(30, (uint64_t)cpu_exc_pusher30); // Fault #SX: Security Exception
+  set_interrupt_entry(30, (uint64_t)SX_EXC_pusher30); // Fault #SX: Security Exception
 
   //
   // These are system reserved, if they trigger they will go to unhandled interrupt error
   //
 
-  set_interrupt_entry(15, (uint64_t)cpu_isr_pusher15);
+  set_interrupt_entry(15, (uint64_t)CPU_ISR_pusher15);
 
-  set_interrupt_entry(21, (uint64_t)cpu_isr_pusher21);
-  set_interrupt_entry(22, (uint64_t)cpu_isr_pusher22);
-  set_interrupt_entry(23, (uint64_t)cpu_isr_pusher23);
-  set_interrupt_entry(24, (uint64_t)cpu_isr_pusher24);
-  set_interrupt_entry(25, (uint64_t)cpu_isr_pusher25);
-  set_interrupt_entry(26, (uint64_t)cpu_isr_pusher26);
-  set_interrupt_entry(27, (uint64_t)cpu_isr_pusher27);
-  set_interrupt_entry(28, (uint64_t)cpu_isr_pusher28);
-  set_interrupt_entry(29, (uint64_t)cpu_isr_pusher29);
+  set_interrupt_entry(21, (uint64_t)CPU_ISR_pusher21);
+  set_interrupt_entry(22, (uint64_t)CPU_ISR_pusher22);
+  set_interrupt_entry(23, (uint64_t)CPU_ISR_pusher23);
+  set_interrupt_entry(24, (uint64_t)CPU_ISR_pusher24);
+  set_interrupt_entry(25, (uint64_t)CPU_ISR_pusher25);
+  set_interrupt_entry(26, (uint64_t)CPU_ISR_pusher26);
+  set_interrupt_entry(27, (uint64_t)CPU_ISR_pusher27);
+  set_interrupt_entry(28, (uint64_t)CPU_ISR_pusher28);
+  set_interrupt_entry(29, (uint64_t)CPU_ISR_pusher29);
 
-  set_interrupt_entry(31, (uint64_t)cpu_isr_pusher31);
+  set_interrupt_entry(31, (uint64_t)CPU_ISR_pusher31);
 
   //
   // User-Defined Interrupts
@@ -1618,230 +1618,230 @@ void Setup_IDT(void)
 
   // By default everything is set to USER_ISR_MACRO.
 
-  set_interrupt_entry(32, (uint64_t)user_isr_pusher32);
-  set_interrupt_entry(33, (uint64_t)user_isr_pusher33);
-  set_interrupt_entry(34, (uint64_t)user_isr_pusher34);
-  set_interrupt_entry(35, (uint64_t)user_isr_pusher35);
-  set_interrupt_entry(36, (uint64_t)user_isr_pusher36);
-  set_interrupt_entry(37, (uint64_t)user_isr_pusher37);
-  set_interrupt_entry(38, (uint64_t)user_isr_pusher38);
-  set_interrupt_entry(39, (uint64_t)user_isr_pusher39);
-  set_interrupt_entry(40, (uint64_t)user_isr_pusher40);
-  set_interrupt_entry(41, (uint64_t)user_isr_pusher41);
-  set_interrupt_entry(42, (uint64_t)user_isr_pusher42);
-  set_interrupt_entry(43, (uint64_t)user_isr_pusher43);
-  set_interrupt_entry(44, (uint64_t)user_isr_pusher44);
-  set_interrupt_entry(45, (uint64_t)user_isr_pusher45);
-  set_interrupt_entry(46, (uint64_t)user_isr_pusher46);
-  set_interrupt_entry(47, (uint64_t)user_isr_pusher47);
-  set_interrupt_entry(48, (uint64_t)user_isr_pusher48);
-  set_interrupt_entry(49, (uint64_t)user_isr_pusher49);
-  set_interrupt_entry(50, (uint64_t)user_isr_pusher50);
-  set_interrupt_entry(51, (uint64_t)user_isr_pusher51);
-  set_interrupt_entry(52, (uint64_t)user_isr_pusher52);
-  set_interrupt_entry(53, (uint64_t)user_isr_pusher53);
-  set_interrupt_entry(54, (uint64_t)user_isr_pusher54);
-  set_interrupt_entry(55, (uint64_t)user_isr_pusher55);
-  set_interrupt_entry(56, (uint64_t)user_isr_pusher56);
-  set_interrupt_entry(57, (uint64_t)user_isr_pusher57);
-  set_interrupt_entry(58, (uint64_t)user_isr_pusher58);
-  set_interrupt_entry(59, (uint64_t)user_isr_pusher59);
-  set_interrupt_entry(60, (uint64_t)user_isr_pusher60);
-  set_interrupt_entry(61, (uint64_t)user_isr_pusher61);
-  set_interrupt_entry(62, (uint64_t)user_isr_pusher62);
-  set_interrupt_entry(63, (uint64_t)user_isr_pusher63);
-  set_interrupt_entry(64, (uint64_t)user_isr_pusher64);
-  set_interrupt_entry(65, (uint64_t)user_isr_pusher65);
-  set_interrupt_entry(66, (uint64_t)user_isr_pusher66);
-  set_interrupt_entry(67, (uint64_t)user_isr_pusher67);
-  set_interrupt_entry(68, (uint64_t)user_isr_pusher68);
-  set_interrupt_entry(69, (uint64_t)user_isr_pusher69);
-  set_interrupt_entry(70, (uint64_t)user_isr_pusher70);
-  set_interrupt_entry(71, (uint64_t)user_isr_pusher71);
-  set_interrupt_entry(72, (uint64_t)user_isr_pusher72);
-  set_interrupt_entry(73, (uint64_t)user_isr_pusher73);
-  set_interrupt_entry(74, (uint64_t)user_isr_pusher74);
-  set_interrupt_entry(75, (uint64_t)user_isr_pusher75);
-  set_interrupt_entry(76, (uint64_t)user_isr_pusher76);
-  set_interrupt_entry(77, (uint64_t)user_isr_pusher77);
-  set_interrupt_entry(78, (uint64_t)user_isr_pusher78);
-  set_interrupt_entry(79, (uint64_t)user_isr_pusher79);
-  set_interrupt_entry(80, (uint64_t)user_isr_pusher80);
-  set_interrupt_entry(81, (uint64_t)user_isr_pusher81);
-  set_interrupt_entry(82, (uint64_t)user_isr_pusher82);
-  set_interrupt_entry(83, (uint64_t)user_isr_pusher83);
-  set_interrupt_entry(84, (uint64_t)user_isr_pusher84);
-  set_interrupt_entry(85, (uint64_t)user_isr_pusher85);
-  set_interrupt_entry(86, (uint64_t)user_isr_pusher86);
-  set_interrupt_entry(87, (uint64_t)user_isr_pusher87);
-  set_interrupt_entry(88, (uint64_t)user_isr_pusher88);
-  set_interrupt_entry(89, (uint64_t)user_isr_pusher89);
-  set_interrupt_entry(90, (uint64_t)user_isr_pusher90);
-  set_interrupt_entry(91, (uint64_t)user_isr_pusher91);
-  set_interrupt_entry(92, (uint64_t)user_isr_pusher92);
-  set_interrupt_entry(93, (uint64_t)user_isr_pusher93);
-  set_interrupt_entry(94, (uint64_t)user_isr_pusher94);
-  set_interrupt_entry(95, (uint64_t)user_isr_pusher95);
-  set_interrupt_entry(96, (uint64_t)user_isr_pusher96);
-  set_interrupt_entry(97, (uint64_t)user_isr_pusher97);
-  set_interrupt_entry(98, (uint64_t)user_isr_pusher98);
-  set_interrupt_entry(99, (uint64_t)user_isr_pusher99);
-  set_interrupt_entry(100, (uint64_t)user_isr_pusher100);
-  set_interrupt_entry(101, (uint64_t)user_isr_pusher101);
-  set_interrupt_entry(102, (uint64_t)user_isr_pusher102);
-  set_interrupt_entry(103, (uint64_t)user_isr_pusher103);
-  set_interrupt_entry(104, (uint64_t)user_isr_pusher104);
-  set_interrupt_entry(105, (uint64_t)user_isr_pusher105);
-  set_interrupt_entry(106, (uint64_t)user_isr_pusher106);
-  set_interrupt_entry(107, (uint64_t)user_isr_pusher107);
-  set_interrupt_entry(108, (uint64_t)user_isr_pusher108);
-  set_interrupt_entry(109, (uint64_t)user_isr_pusher109);
-  set_interrupt_entry(110, (uint64_t)user_isr_pusher110);
-  set_interrupt_entry(111, (uint64_t)user_isr_pusher111);
-  set_interrupt_entry(112, (uint64_t)user_isr_pusher112);
-  set_interrupt_entry(113, (uint64_t)user_isr_pusher113);
-  set_interrupt_entry(114, (uint64_t)user_isr_pusher114);
-  set_interrupt_entry(115, (uint64_t)user_isr_pusher115);
-  set_interrupt_entry(116, (uint64_t)user_isr_pusher116);
-  set_interrupt_entry(117, (uint64_t)user_isr_pusher117);
-  set_interrupt_entry(118, (uint64_t)user_isr_pusher118);
-  set_interrupt_entry(119, (uint64_t)user_isr_pusher119);
-  set_interrupt_entry(120, (uint64_t)user_isr_pusher120);
-  set_interrupt_entry(121, (uint64_t)user_isr_pusher121);
-  set_interrupt_entry(122, (uint64_t)user_isr_pusher122);
-  set_interrupt_entry(123, (uint64_t)user_isr_pusher123);
-  set_interrupt_entry(124, (uint64_t)user_isr_pusher124);
-  set_interrupt_entry(125, (uint64_t)user_isr_pusher125);
-  set_interrupt_entry(126, (uint64_t)user_isr_pusher126);
-  set_interrupt_entry(127, (uint64_t)user_isr_pusher127);
-  set_interrupt_entry(128, (uint64_t)user_isr_pusher128);
-  set_interrupt_entry(129, (uint64_t)user_isr_pusher129);
-  set_interrupt_entry(130, (uint64_t)user_isr_pusher130);
-  set_interrupt_entry(131, (uint64_t)user_isr_pusher131);
-  set_interrupt_entry(132, (uint64_t)user_isr_pusher132);
-  set_interrupt_entry(133, (uint64_t)user_isr_pusher133);
-  set_interrupt_entry(134, (uint64_t)user_isr_pusher134);
-  set_interrupt_entry(135, (uint64_t)user_isr_pusher135);
-  set_interrupt_entry(136, (uint64_t)user_isr_pusher136);
-  set_interrupt_entry(137, (uint64_t)user_isr_pusher137);
-  set_interrupt_entry(138, (uint64_t)user_isr_pusher138);
-  set_interrupt_entry(139, (uint64_t)user_isr_pusher139);
-  set_interrupt_entry(140, (uint64_t)user_isr_pusher140);
-  set_interrupt_entry(141, (uint64_t)user_isr_pusher141);
-  set_interrupt_entry(142, (uint64_t)user_isr_pusher142);
-  set_interrupt_entry(143, (uint64_t)user_isr_pusher143);
-  set_interrupt_entry(144, (uint64_t)user_isr_pusher144);
-  set_interrupt_entry(145, (uint64_t)user_isr_pusher145);
-  set_interrupt_entry(146, (uint64_t)user_isr_pusher146);
-  set_interrupt_entry(147, (uint64_t)user_isr_pusher147);
-  set_interrupt_entry(148, (uint64_t)user_isr_pusher148);
-  set_interrupt_entry(149, (uint64_t)user_isr_pusher149);
-  set_interrupt_entry(150, (uint64_t)user_isr_pusher150);
-  set_interrupt_entry(151, (uint64_t)user_isr_pusher151);
-  set_interrupt_entry(152, (uint64_t)user_isr_pusher152);
-  set_interrupt_entry(153, (uint64_t)user_isr_pusher153);
-  set_interrupt_entry(154, (uint64_t)user_isr_pusher154);
-  set_interrupt_entry(155, (uint64_t)user_isr_pusher155);
-  set_interrupt_entry(156, (uint64_t)user_isr_pusher156);
-  set_interrupt_entry(157, (uint64_t)user_isr_pusher157);
-  set_interrupt_entry(158, (uint64_t)user_isr_pusher158);
-  set_interrupt_entry(159, (uint64_t)user_isr_pusher159);
-  set_interrupt_entry(160, (uint64_t)user_isr_pusher160);
-  set_interrupt_entry(161, (uint64_t)user_isr_pusher161);
-  set_interrupt_entry(162, (uint64_t)user_isr_pusher162);
-  set_interrupt_entry(163, (uint64_t)user_isr_pusher163);
-  set_interrupt_entry(164, (uint64_t)user_isr_pusher164);
-  set_interrupt_entry(165, (uint64_t)user_isr_pusher165);
-  set_interrupt_entry(166, (uint64_t)user_isr_pusher166);
-  set_interrupt_entry(167, (uint64_t)user_isr_pusher167);
-  set_interrupt_entry(168, (uint64_t)user_isr_pusher168);
-  set_interrupt_entry(169, (uint64_t)user_isr_pusher169);
-  set_interrupt_entry(170, (uint64_t)user_isr_pusher170);
-  set_interrupt_entry(171, (uint64_t)user_isr_pusher171);
-  set_interrupt_entry(172, (uint64_t)user_isr_pusher172);
-  set_interrupt_entry(173, (uint64_t)user_isr_pusher173);
-  set_interrupt_entry(174, (uint64_t)user_isr_pusher174);
-  set_interrupt_entry(175, (uint64_t)user_isr_pusher175);
-  set_interrupt_entry(176, (uint64_t)user_isr_pusher176);
-  set_interrupt_entry(177, (uint64_t)user_isr_pusher177);
-  set_interrupt_entry(178, (uint64_t)user_isr_pusher178);
-  set_interrupt_entry(179, (uint64_t)user_isr_pusher179);
-  set_interrupt_entry(180, (uint64_t)user_isr_pusher180);
-  set_interrupt_entry(181, (uint64_t)user_isr_pusher181);
-  set_interrupt_entry(182, (uint64_t)user_isr_pusher182);
-  set_interrupt_entry(183, (uint64_t)user_isr_pusher183);
-  set_interrupt_entry(184, (uint64_t)user_isr_pusher184);
-  set_interrupt_entry(185, (uint64_t)user_isr_pusher185);
-  set_interrupt_entry(186, (uint64_t)user_isr_pusher186);
-  set_interrupt_entry(187, (uint64_t)user_isr_pusher187);
-  set_interrupt_entry(188, (uint64_t)user_isr_pusher188);
-  set_interrupt_entry(189, (uint64_t)user_isr_pusher189);
-  set_interrupt_entry(190, (uint64_t)user_isr_pusher190);
-  set_interrupt_entry(191, (uint64_t)user_isr_pusher191);
-  set_interrupt_entry(192, (uint64_t)user_isr_pusher192);
-  set_interrupt_entry(193, (uint64_t)user_isr_pusher193);
-  set_interrupt_entry(194, (uint64_t)user_isr_pusher194);
-  set_interrupt_entry(195, (uint64_t)user_isr_pusher195);
-  set_interrupt_entry(196, (uint64_t)user_isr_pusher196);
-  set_interrupt_entry(197, (uint64_t)user_isr_pusher197);
-  set_interrupt_entry(198, (uint64_t)user_isr_pusher198);
-  set_interrupt_entry(199, (uint64_t)user_isr_pusher199);
-  set_interrupt_entry(200, (uint64_t)user_isr_pusher200);
-  set_interrupt_entry(201, (uint64_t)user_isr_pusher201);
-  set_interrupt_entry(202, (uint64_t)user_isr_pusher202);
-  set_interrupt_entry(203, (uint64_t)user_isr_pusher203);
-  set_interrupt_entry(204, (uint64_t)user_isr_pusher204);
-  set_interrupt_entry(205, (uint64_t)user_isr_pusher205);
-  set_interrupt_entry(206, (uint64_t)user_isr_pusher206);
-  set_interrupt_entry(207, (uint64_t)user_isr_pusher207);
-  set_interrupt_entry(208, (uint64_t)user_isr_pusher208);
-  set_interrupt_entry(209, (uint64_t)user_isr_pusher209);
-  set_interrupt_entry(210, (uint64_t)user_isr_pusher210);
-  set_interrupt_entry(211, (uint64_t)user_isr_pusher211);
-  set_interrupt_entry(212, (uint64_t)user_isr_pusher212);
-  set_interrupt_entry(213, (uint64_t)user_isr_pusher213);
-  set_interrupt_entry(214, (uint64_t)user_isr_pusher214);
-  set_interrupt_entry(215, (uint64_t)user_isr_pusher215);
-  set_interrupt_entry(216, (uint64_t)user_isr_pusher216);
-  set_interrupt_entry(217, (uint64_t)user_isr_pusher217);
-  set_interrupt_entry(218, (uint64_t)user_isr_pusher218);
-  set_interrupt_entry(219, (uint64_t)user_isr_pusher219);
-  set_interrupt_entry(220, (uint64_t)user_isr_pusher220);
-  set_interrupt_entry(221, (uint64_t)user_isr_pusher221);
-  set_interrupt_entry(222, (uint64_t)user_isr_pusher222);
-  set_interrupt_entry(223, (uint64_t)user_isr_pusher223);
-  set_interrupt_entry(224, (uint64_t)user_isr_pusher224);
-  set_interrupt_entry(225, (uint64_t)user_isr_pusher225);
-  set_interrupt_entry(226, (uint64_t)user_isr_pusher226);
-  set_interrupt_entry(227, (uint64_t)user_isr_pusher227);
-  set_interrupt_entry(228, (uint64_t)user_isr_pusher228);
-  set_interrupt_entry(229, (uint64_t)user_isr_pusher229);
-  set_interrupt_entry(230, (uint64_t)user_isr_pusher230);
-  set_interrupt_entry(231, (uint64_t)user_isr_pusher231);
-  set_interrupt_entry(232, (uint64_t)user_isr_pusher232);
-  set_interrupt_entry(233, (uint64_t)user_isr_pusher233);
-  set_interrupt_entry(234, (uint64_t)user_isr_pusher234);
-  set_interrupt_entry(235, (uint64_t)user_isr_pusher235);
-  set_interrupt_entry(236, (uint64_t)user_isr_pusher236);
-  set_interrupt_entry(237, (uint64_t)user_isr_pusher237);
-  set_interrupt_entry(238, (uint64_t)user_isr_pusher238);
-  set_interrupt_entry(239, (uint64_t)user_isr_pusher239);
-  set_interrupt_entry(240, (uint64_t)user_isr_pusher240);
-  set_interrupt_entry(241, (uint64_t)user_isr_pusher241);
-  set_interrupt_entry(242, (uint64_t)user_isr_pusher242);
-  set_interrupt_entry(243, (uint64_t)user_isr_pusher243);
-  set_interrupt_entry(244, (uint64_t)user_isr_pusher244);
-  set_interrupt_entry(245, (uint64_t)user_isr_pusher245);
-  set_interrupt_entry(246, (uint64_t)user_isr_pusher246);
-  set_interrupt_entry(247, (uint64_t)user_isr_pusher247);
-  set_interrupt_entry(248, (uint64_t)user_isr_pusher248);
-  set_interrupt_entry(249, (uint64_t)user_isr_pusher249);
-  set_interrupt_entry(250, (uint64_t)user_isr_pusher250);
-  set_interrupt_entry(251, (uint64_t)user_isr_pusher251);
-  set_interrupt_entry(252, (uint64_t)user_isr_pusher252);
-  set_interrupt_entry(253, (uint64_t)user_isr_pusher253);
-  set_interrupt_entry(254, (uint64_t)user_isr_pusher254);
-  set_interrupt_entry(255, (uint64_t)user_isr_pusher255);
+  set_interrupt_entry(32, (uint64_t)User_ISR_pusher32);
+  set_interrupt_entry(33, (uint64_t)User_ISR_pusher33);
+  set_interrupt_entry(34, (uint64_t)User_ISR_pusher34);
+  set_interrupt_entry(35, (uint64_t)User_ISR_pusher35);
+  set_interrupt_entry(36, (uint64_t)User_ISR_pusher36);
+  set_interrupt_entry(37, (uint64_t)User_ISR_pusher37);
+  set_interrupt_entry(38, (uint64_t)User_ISR_pusher38);
+  set_interrupt_entry(39, (uint64_t)User_ISR_pusher39);
+  set_interrupt_entry(40, (uint64_t)User_ISR_pusher40);
+  set_interrupt_entry(41, (uint64_t)User_ISR_pusher41);
+  set_interrupt_entry(42, (uint64_t)User_ISR_pusher42);
+  set_interrupt_entry(43, (uint64_t)User_ISR_pusher43);
+  set_interrupt_entry(44, (uint64_t)User_ISR_pusher44);
+  set_interrupt_entry(45, (uint64_t)User_ISR_pusher45);
+  set_interrupt_entry(46, (uint64_t)User_ISR_pusher46);
+  set_interrupt_entry(47, (uint64_t)User_ISR_pusher47);
+  set_interrupt_entry(48, (uint64_t)User_ISR_pusher48);
+  set_interrupt_entry(49, (uint64_t)User_ISR_pusher49);
+  set_interrupt_entry(50, (uint64_t)User_ISR_pusher50);
+  set_interrupt_entry(51, (uint64_t)User_ISR_pusher51);
+  set_interrupt_entry(52, (uint64_t)User_ISR_pusher52);
+  set_interrupt_entry(53, (uint64_t)User_ISR_pusher53);
+  set_interrupt_entry(54, (uint64_t)User_ISR_pusher54);
+  set_interrupt_entry(55, (uint64_t)User_ISR_pusher55);
+  set_interrupt_entry(56, (uint64_t)User_ISR_pusher56);
+  set_interrupt_entry(57, (uint64_t)User_ISR_pusher57);
+  set_interrupt_entry(58, (uint64_t)User_ISR_pusher58);
+  set_interrupt_entry(59, (uint64_t)User_ISR_pusher59);
+  set_interrupt_entry(60, (uint64_t)User_ISR_pusher60);
+  set_interrupt_entry(61, (uint64_t)User_ISR_pusher61);
+  set_interrupt_entry(62, (uint64_t)User_ISR_pusher62);
+  set_interrupt_entry(63, (uint64_t)User_ISR_pusher63);
+  set_interrupt_entry(64, (uint64_t)User_ISR_pusher64);
+  set_interrupt_entry(65, (uint64_t)User_ISR_pusher65);
+  set_interrupt_entry(66, (uint64_t)User_ISR_pusher66);
+  set_interrupt_entry(67, (uint64_t)User_ISR_pusher67);
+  set_interrupt_entry(68, (uint64_t)User_ISR_pusher68);
+  set_interrupt_entry(69, (uint64_t)User_ISR_pusher69);
+  set_interrupt_entry(70, (uint64_t)User_ISR_pusher70);
+  set_interrupt_entry(71, (uint64_t)User_ISR_pusher71);
+  set_interrupt_entry(72, (uint64_t)User_ISR_pusher72);
+  set_interrupt_entry(73, (uint64_t)User_ISR_pusher73);
+  set_interrupt_entry(74, (uint64_t)User_ISR_pusher74);
+  set_interrupt_entry(75, (uint64_t)User_ISR_pusher75);
+  set_interrupt_entry(76, (uint64_t)User_ISR_pusher76);
+  set_interrupt_entry(77, (uint64_t)User_ISR_pusher77);
+  set_interrupt_entry(78, (uint64_t)User_ISR_pusher78);
+  set_interrupt_entry(79, (uint64_t)User_ISR_pusher79);
+  set_interrupt_entry(80, (uint64_t)User_ISR_pusher80);
+  set_interrupt_entry(81, (uint64_t)User_ISR_pusher81);
+  set_interrupt_entry(82, (uint64_t)User_ISR_pusher82);
+  set_interrupt_entry(83, (uint64_t)User_ISR_pusher83);
+  set_interrupt_entry(84, (uint64_t)User_ISR_pusher84);
+  set_interrupt_entry(85, (uint64_t)User_ISR_pusher85);
+  set_interrupt_entry(86, (uint64_t)User_ISR_pusher86);
+  set_interrupt_entry(87, (uint64_t)User_ISR_pusher87);
+  set_interrupt_entry(88, (uint64_t)User_ISR_pusher88);
+  set_interrupt_entry(89, (uint64_t)User_ISR_pusher89);
+  set_interrupt_entry(90, (uint64_t)User_ISR_pusher90);
+  set_interrupt_entry(91, (uint64_t)User_ISR_pusher91);
+  set_interrupt_entry(92, (uint64_t)User_ISR_pusher92);
+  set_interrupt_entry(93, (uint64_t)User_ISR_pusher93);
+  set_interrupt_entry(94, (uint64_t)User_ISR_pusher94);
+  set_interrupt_entry(95, (uint64_t)User_ISR_pusher95);
+  set_interrupt_entry(96, (uint64_t)User_ISR_pusher96);
+  set_interrupt_entry(97, (uint64_t)User_ISR_pusher97);
+  set_interrupt_entry(98, (uint64_t)User_ISR_pusher98);
+  set_interrupt_entry(99, (uint64_t)User_ISR_pusher99);
+  set_interrupt_entry(100, (uint64_t)User_ISR_pusher100);
+  set_interrupt_entry(101, (uint64_t)User_ISR_pusher101);
+  set_interrupt_entry(102, (uint64_t)User_ISR_pusher102);
+  set_interrupt_entry(103, (uint64_t)User_ISR_pusher103);
+  set_interrupt_entry(104, (uint64_t)User_ISR_pusher104);
+  set_interrupt_entry(105, (uint64_t)User_ISR_pusher105);
+  set_interrupt_entry(106, (uint64_t)User_ISR_pusher106);
+  set_interrupt_entry(107, (uint64_t)User_ISR_pusher107);
+  set_interrupt_entry(108, (uint64_t)User_ISR_pusher108);
+  set_interrupt_entry(109, (uint64_t)User_ISR_pusher109);
+  set_interrupt_entry(110, (uint64_t)User_ISR_pusher110);
+  set_interrupt_entry(111, (uint64_t)User_ISR_pusher111);
+  set_interrupt_entry(112, (uint64_t)User_ISR_pusher112);
+  set_interrupt_entry(113, (uint64_t)User_ISR_pusher113);
+  set_interrupt_entry(114, (uint64_t)User_ISR_pusher114);
+  set_interrupt_entry(115, (uint64_t)User_ISR_pusher115);
+  set_interrupt_entry(116, (uint64_t)User_ISR_pusher116);
+  set_interrupt_entry(117, (uint64_t)User_ISR_pusher117);
+  set_interrupt_entry(118, (uint64_t)User_ISR_pusher118);
+  set_interrupt_entry(119, (uint64_t)User_ISR_pusher119);
+  set_interrupt_entry(120, (uint64_t)User_ISR_pusher120);
+  set_interrupt_entry(121, (uint64_t)User_ISR_pusher121);
+  set_interrupt_entry(122, (uint64_t)User_ISR_pusher122);
+  set_interrupt_entry(123, (uint64_t)User_ISR_pusher123);
+  set_interrupt_entry(124, (uint64_t)User_ISR_pusher124);
+  set_interrupt_entry(125, (uint64_t)User_ISR_pusher125);
+  set_interrupt_entry(126, (uint64_t)User_ISR_pusher126);
+  set_interrupt_entry(127, (uint64_t)User_ISR_pusher127);
+  set_interrupt_entry(128, (uint64_t)User_ISR_pusher128);
+  set_interrupt_entry(129, (uint64_t)User_ISR_pusher129);
+  set_interrupt_entry(130, (uint64_t)User_ISR_pusher130);
+  set_interrupt_entry(131, (uint64_t)User_ISR_pusher131);
+  set_interrupt_entry(132, (uint64_t)User_ISR_pusher132);
+  set_interrupt_entry(133, (uint64_t)User_ISR_pusher133);
+  set_interrupt_entry(134, (uint64_t)User_ISR_pusher134);
+  set_interrupt_entry(135, (uint64_t)User_ISR_pusher135);
+  set_interrupt_entry(136, (uint64_t)User_ISR_pusher136);
+  set_interrupt_entry(137, (uint64_t)User_ISR_pusher137);
+  set_interrupt_entry(138, (uint64_t)User_ISR_pusher138);
+  set_interrupt_entry(139, (uint64_t)User_ISR_pusher139);
+  set_interrupt_entry(140, (uint64_t)User_ISR_pusher140);
+  set_interrupt_entry(141, (uint64_t)User_ISR_pusher141);
+  set_interrupt_entry(142, (uint64_t)User_ISR_pusher142);
+  set_interrupt_entry(143, (uint64_t)User_ISR_pusher143);
+  set_interrupt_entry(144, (uint64_t)User_ISR_pusher144);
+  set_interrupt_entry(145, (uint64_t)User_ISR_pusher145);
+  set_interrupt_entry(146, (uint64_t)User_ISR_pusher146);
+  set_interrupt_entry(147, (uint64_t)User_ISR_pusher147);
+  set_interrupt_entry(148, (uint64_t)User_ISR_pusher148);
+  set_interrupt_entry(149, (uint64_t)User_ISR_pusher149);
+  set_interrupt_entry(150, (uint64_t)User_ISR_pusher150);
+  set_interrupt_entry(151, (uint64_t)User_ISR_pusher151);
+  set_interrupt_entry(152, (uint64_t)User_ISR_pusher152);
+  set_interrupt_entry(153, (uint64_t)User_ISR_pusher153);
+  set_interrupt_entry(154, (uint64_t)User_ISR_pusher154);
+  set_interrupt_entry(155, (uint64_t)User_ISR_pusher155);
+  set_interrupt_entry(156, (uint64_t)User_ISR_pusher156);
+  set_interrupt_entry(157, (uint64_t)User_ISR_pusher157);
+  set_interrupt_entry(158, (uint64_t)User_ISR_pusher158);
+  set_interrupt_entry(159, (uint64_t)User_ISR_pusher159);
+  set_interrupt_entry(160, (uint64_t)User_ISR_pusher160);
+  set_interrupt_entry(161, (uint64_t)User_ISR_pusher161);
+  set_interrupt_entry(162, (uint64_t)User_ISR_pusher162);
+  set_interrupt_entry(163, (uint64_t)User_ISR_pusher163);
+  set_interrupt_entry(164, (uint64_t)User_ISR_pusher164);
+  set_interrupt_entry(165, (uint64_t)User_ISR_pusher165);
+  set_interrupt_entry(166, (uint64_t)User_ISR_pusher166);
+  set_interrupt_entry(167, (uint64_t)User_ISR_pusher167);
+  set_interrupt_entry(168, (uint64_t)User_ISR_pusher168);
+  set_interrupt_entry(169, (uint64_t)User_ISR_pusher169);
+  set_interrupt_entry(170, (uint64_t)User_ISR_pusher170);
+  set_interrupt_entry(171, (uint64_t)User_ISR_pusher171);
+  set_interrupt_entry(172, (uint64_t)User_ISR_pusher172);
+  set_interrupt_entry(173, (uint64_t)User_ISR_pusher173);
+  set_interrupt_entry(174, (uint64_t)User_ISR_pusher174);
+  set_interrupt_entry(175, (uint64_t)User_ISR_pusher175);
+  set_interrupt_entry(176, (uint64_t)User_ISR_pusher176);
+  set_interrupt_entry(177, (uint64_t)User_ISR_pusher177);
+  set_interrupt_entry(178, (uint64_t)User_ISR_pusher178);
+  set_interrupt_entry(179, (uint64_t)User_ISR_pusher179);
+  set_interrupt_entry(180, (uint64_t)User_ISR_pusher180);
+  set_interrupt_entry(181, (uint64_t)User_ISR_pusher181);
+  set_interrupt_entry(182, (uint64_t)User_ISR_pusher182);
+  set_interrupt_entry(183, (uint64_t)User_ISR_pusher183);
+  set_interrupt_entry(184, (uint64_t)User_ISR_pusher184);
+  set_interrupt_entry(185, (uint64_t)User_ISR_pusher185);
+  set_interrupt_entry(186, (uint64_t)User_ISR_pusher186);
+  set_interrupt_entry(187, (uint64_t)User_ISR_pusher187);
+  set_interrupt_entry(188, (uint64_t)User_ISR_pusher188);
+  set_interrupt_entry(189, (uint64_t)User_ISR_pusher189);
+  set_interrupt_entry(190, (uint64_t)User_ISR_pusher190);
+  set_interrupt_entry(191, (uint64_t)User_ISR_pusher191);
+  set_interrupt_entry(192, (uint64_t)User_ISR_pusher192);
+  set_interrupt_entry(193, (uint64_t)User_ISR_pusher193);
+  set_interrupt_entry(194, (uint64_t)User_ISR_pusher194);
+  set_interrupt_entry(195, (uint64_t)User_ISR_pusher195);
+  set_interrupt_entry(196, (uint64_t)User_ISR_pusher196);
+  set_interrupt_entry(197, (uint64_t)User_ISR_pusher197);
+  set_interrupt_entry(198, (uint64_t)User_ISR_pusher198);
+  set_interrupt_entry(199, (uint64_t)User_ISR_pusher199);
+  set_interrupt_entry(200, (uint64_t)User_ISR_pusher200);
+  set_interrupt_entry(201, (uint64_t)User_ISR_pusher201);
+  set_interrupt_entry(202, (uint64_t)User_ISR_pusher202);
+  set_interrupt_entry(203, (uint64_t)User_ISR_pusher203);
+  set_interrupt_entry(204, (uint64_t)User_ISR_pusher204);
+  set_interrupt_entry(205, (uint64_t)User_ISR_pusher205);
+  set_interrupt_entry(206, (uint64_t)User_ISR_pusher206);
+  set_interrupt_entry(207, (uint64_t)User_ISR_pusher207);
+  set_interrupt_entry(208, (uint64_t)User_ISR_pusher208);
+  set_interrupt_entry(209, (uint64_t)User_ISR_pusher209);
+  set_interrupt_entry(210, (uint64_t)User_ISR_pusher210);
+  set_interrupt_entry(211, (uint64_t)User_ISR_pusher211);
+  set_interrupt_entry(212, (uint64_t)User_ISR_pusher212);
+  set_interrupt_entry(213, (uint64_t)User_ISR_pusher213);
+  set_interrupt_entry(214, (uint64_t)User_ISR_pusher214);
+  set_interrupt_entry(215, (uint64_t)User_ISR_pusher215);
+  set_interrupt_entry(216, (uint64_t)User_ISR_pusher216);
+  set_interrupt_entry(217, (uint64_t)User_ISR_pusher217);
+  set_interrupt_entry(218, (uint64_t)User_ISR_pusher218);
+  set_interrupt_entry(219, (uint64_t)User_ISR_pusher219);
+  set_interrupt_entry(220, (uint64_t)User_ISR_pusher220);
+  set_interrupt_entry(221, (uint64_t)User_ISR_pusher221);
+  set_interrupt_entry(222, (uint64_t)User_ISR_pusher222);
+  set_interrupt_entry(223, (uint64_t)User_ISR_pusher223);
+  set_interrupt_entry(224, (uint64_t)User_ISR_pusher224);
+  set_interrupt_entry(225, (uint64_t)User_ISR_pusher225);
+  set_interrupt_entry(226, (uint64_t)User_ISR_pusher226);
+  set_interrupt_entry(227, (uint64_t)User_ISR_pusher227);
+  set_interrupt_entry(228, (uint64_t)User_ISR_pusher228);
+  set_interrupt_entry(229, (uint64_t)User_ISR_pusher229);
+  set_interrupt_entry(230, (uint64_t)User_ISR_pusher230);
+  set_interrupt_entry(231, (uint64_t)User_ISR_pusher231);
+  set_interrupt_entry(232, (uint64_t)User_ISR_pusher232);
+  set_interrupt_entry(233, (uint64_t)User_ISR_pusher233);
+  set_interrupt_entry(234, (uint64_t)User_ISR_pusher234);
+  set_interrupt_entry(235, (uint64_t)User_ISR_pusher235);
+  set_interrupt_entry(236, (uint64_t)User_ISR_pusher236);
+  set_interrupt_entry(237, (uint64_t)User_ISR_pusher237);
+  set_interrupt_entry(238, (uint64_t)User_ISR_pusher238);
+  set_interrupt_entry(239, (uint64_t)User_ISR_pusher239);
+  set_interrupt_entry(240, (uint64_t)User_ISR_pusher240);
+  set_interrupt_entry(241, (uint64_t)User_ISR_pusher241);
+  set_interrupt_entry(242, (uint64_t)User_ISR_pusher242);
+  set_interrupt_entry(243, (uint64_t)User_ISR_pusher243);
+  set_interrupt_entry(244, (uint64_t)User_ISR_pusher244);
+  set_interrupt_entry(245, (uint64_t)User_ISR_pusher245);
+  set_interrupt_entry(246, (uint64_t)User_ISR_pusher246);
+  set_interrupt_entry(247, (uint64_t)User_ISR_pusher247);
+  set_interrupt_entry(248, (uint64_t)User_ISR_pusher248);
+  set_interrupt_entry(249, (uint64_t)User_ISR_pusher249);
+  set_interrupt_entry(250, (uint64_t)User_ISR_pusher250);
+  set_interrupt_entry(251, (uint64_t)User_ISR_pusher251);
+  set_interrupt_entry(252, (uint64_t)User_ISR_pusher252);
+  set_interrupt_entry(253, (uint64_t)User_ISR_pusher253);
+  set_interrupt_entry(254, (uint64_t)User_ISR_pusher254);
+  set_interrupt_entry(255, (uint64_t)User_ISR_pusher255);
 
   //
   // Gotta love spreadsheet macros for this kind of stuff.
@@ -1849,7 +1849,7 @@ void Setup_IDT(void)
   // (square brackets denote a cell):
   //
   //          A              B                C                D    E
-  // 1 [set_interrupt_entry(] [32] [, (uint64_t)user_isr_pusher] [32] [);]
+  // 1 [set_interrupt_entry(] [32] [, (uint64_t)User_ISR_pusher] [32] [);]
   // 2                      [33]                              [33]
   // 3                      [34]                              [34]
   // ...                     ...                               ...
@@ -2473,23 +2473,90 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
 // Reminder: NMI, Double Fault, Machine Check, and Breakpoint have their own stacks from the x86-64 IST mechanism as set in Setup_IDT().
 //
 
-// TODO: This is temporary, 8kiB... But maybe this is all we need...? Although page faults might preempt interrupts... maybe malloc-like thing needed for cpu isr/exc?
-// is there a way to ensure page faults never happen?
-// It can only serve one interrupt, not an interrupt interrupting an interrupt (which don't happen with interrupt gates, unless something's really screwed and a shutdown would be needed anyways)
 #define XSAVE_SIZE (1 << 13)
 
-__attribute__((aligned(64))) static volatile unsigned char cpu_xsave_space[XSAVE_SIZE] = {0};
-__attribute__((aligned(64))) static volatile unsigned char user_xsave_space[XSAVE_SIZE] = {0};
+__attribute__((aligned(64))) static volatile unsigned char cpu_xsave_space[XSAVE_SIZE] = {0}; // Generic space for unhandled/unknown IDT vectors in the 0-31 range.
+__attribute__((aligned(64))) static volatile unsigned char user_xsave_space[XSAVE_SIZE] = {0}; // For vectors 32-255, which can't preempt each other due to interrupt gating (IF in RFLAGS is cleared during ISR execution)
+//
 // Keeping separate xsave areas since the "user" handlers can only fire one at a time.
 // The "cpu" handlers are not maskable, and a user handler could trigger one of them. Separating the xsave areas prevents xsave area corruption in this case.
-// However, cpu handlers can preempt themselves (e.g. the page fault handler can possible trigger a page fault, and NMIs are random)...
+// However, certain cpu handlers can preempt themselves (e.g. the page fault handler can possibly trigger a page fault) and certain CPU exceptions/interrupts can
+// arise from other CPU exceptions/interrupts (NMIs are random and they can also page fault, NMIs can interrupt any interrupt...), and that needs to be handled.
+//
+// Having a dedicated XSAVE area for each non-maskable type of interrupt solves most of these issues (e.g. NMI interrupting anything else). Also, NMIs cannot preempt
+// active NMIs until IRET(Q) has been called, and NMIs have the highest priority short of breakpoint and machine check, though a page fault in an NMI can call IRET(Q)
+// and ruin everything. A GPF getting called in an NMI is pretty much game over, since it means the NMI handler is screwy, so realistically the only crazy case to
+// have to worry about is an NMI handler triggering a page fault, since almost anything else indicates a problem with the NMI handler. Returning from a breakpoint
+// nested in an NMI handler is the other case that could mess up the NMI procedure through IRET(Q).
+//
+// The solutions to this include doing something like what the Linux kernel does (see here: https://lwn.net/Articles/484932/), or write a good NMI handler that
+// can't/doesn't page fault and don't put breakpoints in the NMI handler. In all honesty, kernel code shouldn't ever page fault--predominantly in OSes kernels deal with
+// userspace programs page faulting, but kernelspace code doesn't page fault itself. This software does not recognize any concept of userspace, as it does not use
+// privilege rings, so really no handlers should ever trigger any fault. One can also safely put a breakpoint in the NMI hander if one has a means to do so and is OK
+// with restarting the whole system in question when done analyzing the breakpoint instead of returning to the now-unsafe handler (it might work fine, but it'll be at
+// risk of a race condition where the NMI handler will need to finish up before another NMI gets triggered--the same problem the page fault handler would cause).
+//
+// The issue of having stack corruption due to an NMI preempting itself technically also applies to double faults, machine checks, and breakpoints preempting themselves,
+// since they all use the x86-64 IST stack-switching mechanism, but if that somehow happens then something is very wrong with the code (DF), the hardware (DF, MC) or the
+// debugger (BP).
+//
+// Quick extra note: In embedded systems programming, interrupts are never supposed to do anything complicated; they're just supposed to set flags and terminate.
+// Abiding by this practice in general prevents all kinds of shenanigans from occuring during the execution of an interrupt handler. In complex hardware environments
+// like multiple cores and multiple processors, the fewer shenanigans in interrupts the better.
+//
+__attribute__((aligned(64))) static volatile unsigned char de_xsave_space[XSAVE_SIZE] = {0}; // #DE
+__attribute__((aligned(64))) static volatile unsigned char db_xsave_space[XSAVE_SIZE] = {0}; // #DB
+__attribute__((aligned(64))) static volatile unsigned char nmi_xsave_space[XSAVE_SIZE] = {0}; // NMI
+__attribute__((aligned(64))) static volatile unsigned char bp_xsave_space[XSAVE_SIZE] = {0}; // #BP
+__attribute__((aligned(64))) static volatile unsigned char of_xsave_space[XSAVE_SIZE] = {0}; // #OF
+__attribute__((aligned(64))) static volatile unsigned char br_xsave_space[XSAVE_SIZE] = {0}; // #BR
+__attribute__((aligned(64))) static volatile unsigned char ud_xsave_space[XSAVE_SIZE] = {0}; // #UD
+__attribute__((aligned(64))) static volatile unsigned char nm_xsave_space[XSAVE_SIZE] = {0}; // #NM
+__attribute__((aligned(64))) static volatile unsigned char df_xsave_space[XSAVE_SIZE] = {0}; // #DF
+__attribute__((aligned(64))) static volatile unsigned char cso_xsave_space[XSAVE_SIZE] = {0}; // Coprocessor Segment Overrun
+__attribute__((aligned(64))) static volatile unsigned char ts_xsave_space[XSAVE_SIZE] = {0}; // #TS
+__attribute__((aligned(64))) static volatile unsigned char np_xsave_space[XSAVE_SIZE] = {0}; // #NP
+__attribute__((aligned(64))) static volatile unsigned char ss_xsave_space[XSAVE_SIZE] = {0}; // #SS
+__attribute__((aligned(64))) static volatile unsigned char gp_xsave_space[XSAVE_SIZE] = {0}; // #GP
+__attribute__((aligned(64))) static volatile unsigned char pf_xsave_space[XSAVE_SIZE] = {0}; // #PF
+// 15 is reserved, so it gets the generic cpu_xsave_space
+__attribute__((aligned(64))) static volatile unsigned char mf_xsave_space[XSAVE_SIZE] = {0}; // #MF
+__attribute__((aligned(64))) static volatile unsigned char ac_xsave_space[XSAVE_SIZE] = {0}; // #AC
+__attribute__((aligned(64))) static volatile unsigned char mc_xsave_space[XSAVE_SIZE] = {0}; // #MC
+__attribute__((aligned(64))) static volatile unsigned char xm_xsave_space[XSAVE_SIZE] = {0}; // #XM
+__attribute__((aligned(64))) static volatile unsigned char ve_xsave_space[XSAVE_SIZE] = {0}; // #VE
+// 21-29 are reserved, so they get the generic cpu_xsave_space
+__attribute__((aligned(64))) static volatile unsigned char sx_xsave_space[XSAVE_SIZE] = {0}; // #SX
+// 31 is reserved, so it gets the generic cpu_xsave_space
+// Yes, true, some of these are not possible to trigger naturally these days, but they're all here for completeness.
+
+// A more dynamic way to do this is to initialize something like 21 or so reserved XSAVE areas with malloc (or more like xsave_alloc_pages), like this:
+/*
+  uint64_t xsave_area_size = 0;
+  // Leaf 0Dh, in %rbx of %rcx=0, since %rbx of sub-leaf %rcx=1 is undefined on AMD (so no supervisor component support here)
+  asm volatile ("cpuid"
+                : "=b" (xsave_area_size) // Outputs
+                : "a" (0x0D), "c" (0x00) // Inputs
+                : "%rdx" // Clobbers
+              );
+
+  printf("xsave_area_size: %#qx\r\n", xsave_area_size);
+  #define NUM_CPU_ERRS 21
+  uint64_t required_xsave_pages = EFI_SIZE_TO_PAGES(xsave_area_size) * NUM_CPU_ERRS; // xsave area must be 64-byte aligned.
+  unsigned char * major_xsave_space = xsave_alloc_pages(required_xsave_pages); // NUM_CPU_ERRS areas, xsave_alloc_pages already zeroes the space
+  // Then each --_xsave_space gets assigned an offset into the XSAVE area, and each chunk is 'xsave_area_size' in size.
+*/
+// The problem with this malloc-style method is that getting the output asm correct so that [m] in "xsave %[m]" comes out right is much more cumbersome.
+// The implemented static way merely needs to have the STACK_SIZE increased if something like AVX-1024 ever happens (and the 0xE7 masks will need to be updated,
+// but that's true no matter what).
+
 
 //
 // User-Defined Interrupts (no error code)
 //
 
-// Remember: Interrupts are really just supposed to set flags, not do anything too fancy.
-// In particular, they really should not do anything that could cause an internal CPU exception to occur.
+// Remember: Interrupts are not really supposed to do anything too fancy.
+// In particular, they really should not be doing anything that could cause an internal CPU exception to occur.
 
 void User_ISR_handler(INTERRUPT_FRAME * i_frame)
 {
@@ -2554,104 +2621,10 @@ void CPU_ISR_handler(INTERRUPT_FRAME * i_frame)
   // OK, since xsave has been called we can now safely use AVX instructions in this interrupt--up until xrstor is called, at any rate.
   // Using an interrupt gate in the IDT means we won't get preempted now, either, which would wreck the xsave area.
 
-  /*
-    uint64_t xsave_area_size = 0;
-    // Leaf 0Dh, in %rbx of %rcx=0, since %rbx of sub-leaf %rcx=1 is undefined on AMD (so no supervisor component support here)
-    asm volatile ("cpuid"
-                  : "=b" (xsave_area_size) // Outputs
-                  : "a" (0x0D), "c" (0x00) // Inputs
-                  : "%rdx" // Clobbers
-                );
-
-    printf("xsave_area_size: %#qx\r\n", xsave_area_size);
-  */
-
-
+  printf("CPU_ISR_handler: Unhandled Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
   AVX_regdump((XSAVE_AREA_LAYOUT*)cpu_xsave_space);
-
-  switch(i_frame->isr_num)
-  {
-
-    //
-    // Predefined System Interrupts and Exceptions
-    //
-
-    case 0:
-      printf("Fault #DE: Divide Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 1:
-      printf("Fault/Trap #DB: Debug Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 2:
-      printf("NMI: Nonmaskable Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 3:
-      printf("Trap #BP: Breakpoint! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 4:
-      printf("Trap #OF: Overflow! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 5:
-      printf("Fault #BR: BOUND Range Exceeded! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 6:
-      printf("Fault #UD: Invalid or Undefined Opcode! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 7:
-      printf("Fault #NM: Device Not Available Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-// 8 is in CPU EXC Handler
-    case 9:
-      printf("Fault (i386): Coprocessor Segment Overrun! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-// 10-14 are in CPU EXC Handler
-// 15 is reserved and will invoke the default error
-    case 16:
-      printf("Fault #MF: x87 Math Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-// 17 is in CPU EXC Handler
-    case 18:
-      printf("Abort #MC: Machine Check! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 19:
-      printf("Fault #XM: SIMD Floating-Point Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-    case 20:
-      printf("Fault #VE: Virtualization Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-// 21-31 are reserved and will invoke the default error
-    default:
-      printf("CPU_ISR_handler: Unhandled Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
-      ISR_regdump(i_frame);
-      asm volatile("hlt");
-      break;
-  }
+  asm volatile("hlt");
 
   // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
   asm volatile ("xrstor64 %[area]"
@@ -2677,87 +2650,10 @@ void CPU_EXC_handler(EXCEPTION_FRAME * e_frame)
   // OK, since xsave has been called we can now safely use AVX instructions in this interrupt--up until xrstor is called, at any rate.
   // Using an interrupt gate in the IDT means we won't get preempted now, either, which would wreck the xsave area.
 
-  /*
-    nest_counter++; // To offset xsave area for every nested CPU ISR/EXC
-
-    uint64_t xsave_area_size = 0;
-    // Leaf 0Dh, in %rbx of %rcx=0, since %rbx of sub-leaf %rcx=1 is undefined on AMD (so no supervisor component support here)
-    asm volatile ("cpuid"
-                  : "=b" (xsave_area_size) // Outputs
-                  : "a" (0x0D), "c" (0x00) // Inputs
-                  : "%rdx" // Clobbers
-                );
-
-    printf("xsave_area_size: %#qx\r\n", xsave_area_size);
-
-  */
-
+  printf("CPU_EXC_handler: Unhandled Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
   AVX_regdump((XSAVE_AREA_LAYOUT*)cpu_xsave_space);
-
-  switch(e_frame->isr_num)
-  {
-
-    //
-    // Predefined System Interrupts and Exceptions
-    //
-
-// 0-7 are in CPU ISR Handler
-    case 8:
-      printf("Abort #DF: Double Fault! IDT Entry: %#qu, Error Code (always 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-// 9 is in CPU ISR Handler
-    case 10:
-      printf("Fault #TS: Invalid TSS! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-    case 11:
-      printf("Fault #NP: Segment Not Present! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-    case 12:
-      printf("Fault #SS: Stack Segment Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-    case 13:
-      printf("Fault #GP: General Protection! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-    case 14:
-      printf("Fault #PF: Page Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      uint64_t cr2 = control_register_rw(2, 0, 0); // CR2 has the page fault linear address
-      printf("CR2: %#qx\r\n", cr2);
-      uint64_t cr3 = control_register_rw(3, 0, 0); // CR3 has the page directory base (bottom 12 bits of address are assumed 0)
-      printf("CR3: %#qx\r\n", cr3);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-// 15 is reserved in CPU ISR Handler
-// 16 is in CPU ISR Handler
-    case 17:
-      printf("Fault #AC: Alignment Check! IDT Entry: %#qu, Error Code (usually 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-// 18-20 are in CPU ISR Handler
-// 21-29 are reserved in CPU ISR Handler
-    case 30:
-      printf("Fault #SX: Security Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-// 31 is reserved in CPU ISR Handler
-    default:
-      printf("CPU_EXC_handler: Unhandled Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
-      EXC_regdump(e_frame);
-      asm volatile("hlt");
-      break;
-  }
+  asm volatile("hlt");
 
   // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
   asm volatile ("xrstor64 %[area]"
@@ -2766,6 +2662,516 @@ void CPU_EXC_handler(EXCEPTION_FRAME * e_frame)
                 : "memory" // Clobbers
               );
 }
+
+//
+// CPU Special Handlers
+//
+
+// Vector 0
+void DE_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #DE: Divide Error (divide by 0 or not enough bits in destination)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (de_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #DE: Divide Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (de_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 1
+void DB_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault/Trap #DB: Debug Exception
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (db_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault/Trap #DB: Debug Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (db_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 2
+void NMI_ISR_handler(INTERRUPT_FRAME * i_frame) // NMI (Nonmaskable External Interrupt)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (nmi_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("NMI: Nonmaskable Interrupt! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (nmi_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 3
+void BP_ISR_handler(INTERRUPT_FRAME * i_frame) // Trap #BP: Breakpoint (INT3 instruction)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (bp_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Trap #BP: Breakpoint! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (bp_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 4
+void OF_ISR_handler(INTERRUPT_FRAME * i_frame) // Trap #OF: Overflow (INTO instruction)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (of_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Trap #OF: Overflow! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (of_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 5
+void BR_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #BR: BOUND Range Exceeded (BOUND instruction)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (br_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #BR: BOUND Range Exceeded! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (br_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 6
+void UD_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #UD: Invalid or Undefined Opcode
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ud_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #UD: Invalid or Undefined Opcode! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ud_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 7
+void NM_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #NM: Device Not Available Exception
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (nm_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #NM: Device Not Available Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (nm_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 8
+void DF_EXC_handler(EXCEPTION_FRAME * e_frame) // Abort #DF: Double Fault (error code is always 0)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (df_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Abort #DF: Double Fault! IDT Entry: %#qu, Error Code (always 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  AVX_regdump((XSAVE_AREA_LAYOUT*)df_xsave_space);
+  while(1) // #DF is an end of the line if this is a single application and not a full-blown OS that runs programs
+  {
+    asm volatile("hlt");
+  }
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (df_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 9
+void CSO_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault (i386): Coprocessor Segment Overrun (long since obsolete, included for completeness)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (cso_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault (i386): Coprocessor Segment Overrun! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  while(1) // Turns out this is actually an abort!
+  {
+    asm volatile("hlt");
+  }
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (cso_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 10
+void TS_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #TS: Invalid TSS
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ts_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #TS: Invalid TSS! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ts_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 11
+void NP_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #NP: Segment Not Present
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (np_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #NP: Segment Not Present! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (np_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 12
+void SS_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #SS: Stack Segment Fault
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ss_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #SS: Stack Segment Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ss_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 13
+void GP_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #GP: General Protection
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (gp_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #GP: General Protection! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  // Some of these can actually be corrected. Not always the end of the world.
+  // This is just a generic template example.
+  switch(e_frame->error_code)
+  {
+    default:
+      EXC_regdump(e_frame);
+      AVX_regdump((XSAVE_AREA_LAYOUT*)gp_xsave_space);
+      while(1)
+      {
+        asm volatile("hlt");
+      }
+      break;
+  }
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (gp_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 14
+void PF_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #PF: Page Fault
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (pf_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  uint64_t cr2 = control_register_rw(2, 0, 0); // CR2 has the page fault linear address
+  uint64_t cr3 = control_register_rw(3, 0, 0); // CR3 has the page directory base (bottom 12 bits of address are assumed 0)
+  printf("Fault #PF: Page Fault! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  printf("CR2: %#qx\r\n", cr2);
+  printf("CR3: %#qx\r\n", cr3);
+  // This is just a generic template example; page faults are usually not the end of the world.
+  switch(e_frame->error_code)
+  {
+    default:
+      EXC_regdump(e_frame);
+      while(1)
+      {
+        asm volatile("hlt");
+      }
+      break;
+  }
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (pf_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 15 is reserved
+
+// Vector 16
+void MF_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #MF: Math Error (x87 FPU Floating-Point Math Error)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (mf_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #MF: x87 Math Error! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  AVX_regdump((XSAVE_AREA_LAYOUT *)mf_xsave_space);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (mf_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 17
+void AC_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #AC: Alignment Check (error code is always 0)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ac_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #AC: Alignment Check! IDT Entry: %#qu, Error Code (usually 0): %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ac_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 18
+void MC_ISR_handler(INTERRUPT_FRAME * i_frame) // Abort #MC: Machine Check
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (mc_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Abort #MC: Machine Check! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  AVX_regdump((XSAVE_AREA_LAYOUT*)mc_xsave_space);
+  while(1) // There's no escaping #MC
+  {
+    asm volatile("hlt");
+  }
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (mc_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 19
+void XM_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #XM: SIMD Floating-Point Exception (SSE instructions)
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (xm_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #XM: SIMD Floating-Point Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  AVX_regdump((XSAVE_AREA_LAYOUT*)xm_xsave_space);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (xm_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 20
+void VE_ISR_handler(INTERRUPT_FRAME * i_frame) // Fault #VE: Virtualization Exception
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ve_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #VE: Virtualization Exception! IDT Entry: %#qu\r\n", i_frame->isr_num);
+  ISR_regdump(i_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (ve_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vectors 21-29 are reserved
+
+// Vector 30
+void SX_EXC_handler(EXCEPTION_FRAME * e_frame) // Fault #SX: Security Exception
+{
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xsave64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (sx_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+
+  printf("Fault #SX: Security Exception! IDT Entry: %#qu, Error Code: %#qx\r\n", e_frame->isr_num, e_frame->error_code);
+  EXC_regdump(e_frame);
+  asm volatile("hlt");
+
+  // %rdx: Mask for xcr0 [63:32], %rax: Mask for xcr0 [31:0]
+  asm volatile ("xrstor64 %[area]"
+                : // No outputs
+                : "a" (0xE7), "d" (0x00), [area] "m" (sx_xsave_space) // Inputs
+                : "memory" // Clobbers
+              );
+}
+
+// Vector 31 is reserved
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 // Interrupt Support Functions: Helpers for Interrupt and Exception Handlers

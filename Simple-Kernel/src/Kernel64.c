@@ -628,6 +628,7 @@ void Print_Segment_Registers(void)
   asm volatile("vmovdqu %[what], %%ymm15" : : [what] "m" (what9) :);
 
   volatile __m256i output = _mm256_bsrli_epi128(what2, 1);
+//  asm volatile ("int3");
 //  asm volatile ("int $32");
 
   volatile uint64_t c = cs / (cs >> 10); // TODO: remove this lol
