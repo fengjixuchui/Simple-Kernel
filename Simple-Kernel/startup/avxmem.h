@@ -359,6 +359,8 @@ int memcmp_large_a(const void *str1, const void *str2, size_t numbytes);
 int memcmp_large_eq_a(const void *str1, const void *str2, size_t numbytes);
 
 // Scalar
+int memcmp (const void *str1, const void *str2, size_t count);
+int memcmp_eq (const void *str1, const void *str2, size_t count);
 int memcmp_16bit(const void *str1, const void *str2, size_t count);
 int memcmp_16bit_eq(const void *str1, const void *str2, size_t count);
 int memcmp_32bit(const void *str1, const void *str2, size_t count);

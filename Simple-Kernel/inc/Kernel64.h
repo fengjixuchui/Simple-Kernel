@@ -46,6 +46,8 @@
 #include "avxmem.h"
 #include "ISR.h"
 
+//#include <acpi.h>
+
 // GRAPHICS
 typedef struct {
   UINT32            RedMask;
@@ -188,8 +190,6 @@ EFI_STATUS
 
 // Looking for something that's not here? Try EfiTypes.h.
 
-#define NextMemoryDescriptor(Ptr,Size)  ((EFI_MEMORY_DESCRIPTOR *) (((UINT8 *) Ptr) + Size))
-
 typedef
 EFI_STATUS
 (EFIAPI *EFI_SET_VIRTUAL_ADDRESS_MAP) (                // For identity mapping, pass these:
@@ -321,6 +321,10 @@ typedef struct  {
     EFI_QUERY_VARIABLE_INFO         QueryVariableInfo;
 } EFI_RUNTIME_SERVICES;
 
+//
+// EFI File Metadata
+//
+
 typedef struct {
     UINT64                  Size;
     UINT64                  FileSize;
@@ -332,6 +336,43 @@ typedef struct {
     CHAR16                  FileName[1];
 } EFI_FILE_INFO;
 
+//
+// System Configuration Table Definitions
+//
+
+#define MPS_TABLE_GUID    \
+    { 0xeb9d2d2f, 0x2d88, 0x11d3, {0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d} }
+
+#define ACPI_10_TABLE_GUID    \
+    { 0xeb9d2d30, 0x2d88, 0x11d3, {0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d} }
+
+#define ACPI_20_TABLE_GUID  \
+    { 0x8868e871, 0xe4f1, 0x11d3, {0xbc, 0x22, 0x0, 0x80, 0xc7, 0x3c, 0x88, 0x81} }
+
+#define SMBIOS_TABLE_GUID    \
+    { 0xeb9d2d31, 0x2d88, 0x11d3, {0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d} }
+
+#define SMBIOS3_TABLE_GUID    \
+    { 0xf2fd1544, 0x9794, 0x4a2c, {0x99, 0x2e, 0xe5, 0xbb, 0xcf, 0x20, 0xe3, 0x94} }
+
+#define SAL_SYSTEM_TABLE_GUID    \
+    { 0xeb9d2d32, 0x2d88, 0x11d3, {0x9a, 0x16, 0x0, 0x90, 0x27, 0x3f, 0xc1, 0x4d} }
+
+static const EFI_GUID MpsTableGuid = MPS_TABLE_GUID;
+static const EFI_GUID Acpi10TableGuid = ACPI_10_TABLE_GUID;
+static const EFI_GUID Acpi20TableGuid = ACPI_20_TABLE_GUID;
+static const EFI_GUID SmbiosTableGuid = SMBIOS_TABLE_GUID;
+static const EFI_GUID Smbios3TableGuid = SMBIOS3_TABLE_GUID;
+static const EFI_GUID SalSystemTableGuid = SAL_SYSTEM_TABLE_GUID;
+
+typedef struct _EFI_CONFIGURATION_TABLE {
+    EFI_GUID                VendorGuid;
+    VOID                    *VendorTable;
+} EFI_CONFIGURATION_TABLE;
+
+//
+// Bootloader Structures
+//
 
 typedef struct {
   EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  *GPUArray;             // This array contains the EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE structures for each available framebuffer
@@ -347,28 +388,30 @@ typedef struct {
 // GTX1080.Info->HorizontalResolution
 
 typedef struct {
-  UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
-  UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
+  UINT32                    UEFI_Version;                   // The system UEFI version
+  UINT32                    Bootloader_MajorVersion;        // The major version of the bootloader
+  UINT32                    Bootloader_MinorVersion;        // The minor version of the bootloader
 
-  UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
-  UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
-  EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-  UINTN                   Memory_Map_Size;                // The total size of the system memory map
+  UINT32                    Memory_Map_Descriptor_Version;  // The memory descriptor version
+  UINTN                     Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+  EFI_MEMORY_DESCRIPTOR    *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+  UINTN                     Memory_Map_Size;                // The total size of the system memory map
 
-  EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded kernel file
-  UINTN                   Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
+  EFI_PHYSICAL_ADDRESS      Kernel_BaseAddress;             // The base memory address of the loaded kernel file
+  UINTN                     Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
 
-  CHAR16                 *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
-  UINT64                  ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
-  CHAR16                 *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
-  UINT64                  Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
-  CHAR16                 *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
-  UINT64                  Kernel_Options_Size;            // The size (in bytes) of the above load options string
+  CHAR16                   *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
+  UINT64                    ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
+  CHAR16                   *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
+  UINT64                    Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
+  CHAR16                   *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
+  UINT64                    Kernel_Options_Size;            // The size (in bytes) of the above load options string
 
-  EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
-  GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see above GPU_CONFIG struct for details
-  EFI_FILE_INFO          *FileMeta;                       // Kernel file metadata
-  void                   *RSDP;                           // A pointer to the RSDP ACPI table
+  EFI_RUNTIME_SERVICES     *RTServices;                     // UEFI Runtime Services
+  GPU_CONFIG               *GPU_Configs;                    // Information about available graphics output devices; see below GPU_CONFIG struct for details
+  EFI_FILE_INFO            *FileMeta;                       // Kernel file metadata
+  EFI_CONFIGURATION_TABLE  *ConfigTables;                   // UEFI-installed system configuration tables (ACPI, SMBIOS, etc.)
+  UINTN                     Number_of_ConfigTables;         // The number of system configuration tables
 } LOADER_PARAMS;
 
 // END UEFI and Bootloader functions, definitions, and declarations
@@ -394,8 +437,6 @@ typedef struct {
   UINT32                  Pad;                     // Pad to multiple of 64 bits
 } GLOBAL_MEMORY_INFO_STRUCT;
 
-GLOBAL_MEMORY_INFO_STRUCT Global_Memory_Info;
-
 // For printf
 typedef struct {
 	EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE  defaultGPU;       // Default EFI GOP output device from GPUArray (should be GPUArray[0] if there's only 1)
@@ -410,8 +451,6 @@ typedef struct {
   UINT32                             index;            // Global string index for printf, etc. to keep track of cursor's postion in the framebuffer
   UINT32                             textscrollmode;   // What to do when a newline goes off the bottom of the screen: 0 = scroll entire screen, 1 = wrap around to the top
 } GLOBAL_PRINT_INFO_STRUCT;
-
-GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
 
 // Intel Architecture Manual Vol. 3A, Fig. 3-11 (Pseudo-Descriptor Formats)
 typedef struct __attribute__ ((packed)) {
@@ -505,7 +544,62 @@ typedef struct __attribute__ ((packed)) {
  UINT32 Reserved;
 } IDT_GATE_STRUCT; // Interrupt and trap gates use this format
 
-// See ISR.h for interrupt structures
+// See ISR.h for the specific interrupt structures
+
+// ACPI Structures
+// ACPI Specification 6.2A, section 5.2.5 (Root System Description Pointer (RSDP))
+typedef struct __attribute__((packed)) {
+  char      Signature[8]; // "RSD PTR " with trailing space
+  uint8_t   Checksum;
+  char      OEMID[6];
+  uint8_t   Revision;
+  uint32_t  RSDTAddress; // 32-bit RSDT
+} RSDP_10_STRUCT;
+
+typedef struct __attribute__((packed)) {
+  RSDP_10_STRUCT  RSDP_10_Section;
+  uint32_t        Length;
+  uint64_t        XSDTAddress; // 64-bit RSDT is XSDT
+  uint8_t         ExtendedChecksum;
+  uint8_t         Reserved[3];
+} RSDP_20_STRUCT;
+
+typedef struct __attribute__((packed)) {
+  char      Signature[4];
+  uint32_t  Length;
+  uint8_t   Revision;
+  uint8_t   Checksum;
+  char      OEMID[6];
+  char      OEMTableID[8];
+  uint32_t  OEMRevision;
+  uint32_t  CreatorID;
+  uint32_t  CreatorRevision;
+} SDT_HEADER_STRUCT;
+
+typedef struct __attribute__((packed)) {
+  SDT_HEADER_STRUCT SDTHeader;
+  uint64_t          Entry[1]; // Size of XSDT is determined by "Length," and each entry is 8 bytes
+} XSDT_STRUCT; // Signature is "XSDT"
+
+//----------------------------------------------------------------------------------------------------------------------------------
+// Global Variables
+//----------------------------------------------------------------------------------------------------------------------------------
+/*
+// Configuration Table GUIDs
+extern EFI_GUID MpsTableGuid;
+extern EFI_GUID Acpi10TableGuid;
+extern EFI_GUID Acpi20TableGuid;
+extern EFI_GUID SmbiosTableGuid;
+extern EFI_GUID Smbios3TableGuid;
+extern EFI_GUID SalSystemTableGuid;
+*/
+extern GLOBAL_MEMORY_INFO_STRUCT Global_Memory_Info;
+extern GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
+
+// Because kernel_main() is a naked function and can't have local variables that would require stack space...
+extern unsigned char swapped_image[];
+extern char brandstring[];
+extern char Manufacturer_ID[];
 
 //----------------------------------------------------------------------------------------------------------------------------------
 //  Function Prototypes
@@ -518,6 +612,7 @@ typedef struct __attribute__ ((packed)) {
 void System_Init(LOADER_PARAMS * LP);
 
 uint64_t get_tick(void);
+void HaCF(void); // Note: this is at the very bottom of System.c
 void Enable_AVX(void);
 void Enable_Maskable_Interrupts(void); // Exceptions and Non-Maskable Interrupts are always enabled.
 void Enable_HWP(void);
@@ -600,12 +695,18 @@ void Print_Segment_Registers(void);
 
 // Memory-related functions (Memory.c)
 uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr); // BaseAddr is a 64-bit unsigned int whose value is the memory address to verify
+uint64_t GetMaxMappedPhysicalAddress(void);
+uint64_t GetVisibleSystemRam(void);
+uint64_t GetFreeSystemRam(void);
+uint64_t GetFreePersistentRam(void);
+uint64_t GuessInstalledSystemRam(void);
 void print_system_memmap(void);
 EFI_MEMORY_DESCRIPTOR * Set_Identity_VMAP(EFI_RUNTIME_SERVICES * RTServices);
 void Setup_MemMap(void);
 void ReclaimEfiBootServicesMemory(void);
 void ReclaimEfiLoaderCodeMemory(void);
 void MergeContiguousConventionalMemory(void);
+EFI_PHYSICAL_ADDRESS pagetable_alloc(uint64_t pagetables_size);
 
   // For physical addresses
 __attribute__((malloc)) void * malloc(size_t numbytes);
