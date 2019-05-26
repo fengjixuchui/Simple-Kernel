@@ -97,9 +97,10 @@ void formatted_string_anywhere_scaled(EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE GPU, UIN
   }
   va_list arguments;
 
-  va_start(arguments, string);
-  ssize_t buffersize = vsnprintf(NULL, 0, string, arguments); // Get size of needed buffer, though (v)snprintf does not account for \0
-  char output_string[buffersize + 1]; // C99 defines variable-length arrays (VLAs), which are well-suited for small buffers like this. malloc16 might be better, though.
+  va_start(arguments, string); // TODO: needs malloc
+  //ssize_t buffersize = vsnprintf(NULL, 0, string, arguments); // Get size of needed buffer, though (v)snprintf does not account for \0
+  //char output_string[buffersize + 1]; // C99 defines variable-length arrays (VLAs), which are well-suited for small buffers like this. malloc16 might be better, though.
+  char output_string[128] = {0};
   vsprintf(output_string, string, arguments); // Write string to buffer
   va_end(arguments);
 

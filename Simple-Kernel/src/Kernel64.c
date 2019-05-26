@@ -18,28 +18,30 @@
 // structure from the bootloader:
 /*
   typedef struct {
-    UINT16                  Bootloader_MajorVersion;        // The major version of the bootloader
-    UINT16                  Bootloader_MinorVersion;        // The minor version of the bootloader
+    UINT32                    UEFI_Version;                   // The system UEFI version
+    UINT32                    Bootloader_MajorVersion;        // The major version of the bootloader
+    UINT32                    Bootloader_MinorVersion;        // The minor version of the bootloader
 
-    UINT32                  Memory_Map_Descriptor_Version;  // The memory descriptor version
-    UINTN                   Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
-    EFI_MEMORY_DESCRIPTOR  *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
-    UINTN                   Memory_Map_Size;                // The total size of the system memory map
+    UINT32                    Memory_Map_Descriptor_Version;  // The memory descriptor version
+    UINTN                     Memory_Map_Descriptor_Size;     // The size of an individual memory descriptor
+    EFI_MEMORY_DESCRIPTOR    *Memory_Map;                     // The system memory map as an array of EFI_MEMORY_DESCRIPTOR structs
+    UINTN                     Memory_Map_Size;                // The total size of the system memory map
 
-    EFI_PHYSICAL_ADDRESS    Kernel_BaseAddress;             // The base memory address of the loaded kernel file
-    UINTN                   Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
+    EFI_PHYSICAL_ADDRESS      Kernel_BaseAddress;             // The base memory address of the loaded kernel file
+    UINTN                     Kernel_Pages;                   // The number of pages (1 page == 4096 bytes) allocated for the kernel file
 
-    CHAR16                 *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
-    UINT64                  ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
-    CHAR16                 *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
-    UINT64                  Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
-    CHAR16                 *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
-    UINT64                  Kernel_Options_Size;            // The size (in bytes) of the above load options string
+    CHAR16                   *ESP_Root_Device_Path;           // A UTF-16 string containing the drive root of the EFI System Partition as converted from UEFI device path format
+    UINT64                    ESP_Root_Size;                  // The size (in bytes) of the above ESP root string
+    CHAR16                   *Kernel_Path;                    // A UTF-16 string containing the kernel's file path relative to the EFI System Partition root (it's the first line of Kernel64.txt)
+    UINT64                    Kernel_Path_Size;               // The size (in bytes) of the above kernel file path
+    CHAR16                   *Kernel_Options;                 // A UTF-16 string containing various load options (it's the second line of Kernel64.txt)
+    UINT64                    Kernel_Options_Size;            // The size (in bytes) of the above load options string
 
-    EFI_RUNTIME_SERVICES   *RTServices;                     // UEFI Runtime Services
-    GPU_CONFIG             *GPU_Configs;                    // Information about available graphics output devices; see below GPU_CONFIG struct for details
-    EFI_FILE_INFO          *FileMeta;                       // Kernel file metadata
-    void                   *RSDP;                           // A pointer to the RSDP ACPI table
+    EFI_RUNTIME_SERVICES     *RTServices;                     // UEFI Runtime Services
+    GPU_CONFIG               *GPU_Configs;                    // Information about available graphics output devices; see below GPU_CONFIG struct for details
+    EFI_FILE_INFO            *FileMeta;                       // Kernel file metadata
+    EFI_CONFIGURATION_TABLE  *ConfigTables;                   // UEFI-installed system configuration tables (ACPI, SMBIOS, etc.)
+    UINTN                     Number_of_ConfigTables;         // The number of system configuration tables
   } LOADER_PARAMS;
 */
 //
@@ -64,12 +66,11 @@
 
 // Stack size defined in number of bytes, e.g. (1 << 12) is 4kiB, (1 << 20) is 1MiB
 #define STACK_SIZE (1 << 20)
-
 // This might allow for occasional slight performance increases. Not guaranteed to always happen, but aligning this to 64 bytes increases the probability.
 __attribute__((aligned(64))) static volatile unsigned char kernel_stack[STACK_SIZE] = {0};
 
 // The character print function can draw raw single-color bitmaps formatted like this, given appropriate height and width values
-static const unsigned char load_image[48] = {
+const unsigned char load_image[48] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
     0x0C, 0x00, 0x06, 0x00, // ....@@.. ........ .....@@. ........
@@ -85,7 +86,7 @@ static const unsigned char load_image[48] = {
 }; // Width = 27 bits, height = 12 bytes
 
 // load_image2 is what actually looks like load_image's ascii art when rendered
-static const unsigned char load_image2[96] = {
+const unsigned char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x01, 0x80, 0x30, 0x00, // .......@ @....... ..@@.... ........
@@ -112,7 +113,7 @@ static const unsigned char load_image2[96] = {
     0x00, 0x3F, 0x80, 0x00  // ........ ..@@@@@@ @....... ........
 }; // Width = 27 bits, height = 24 bytes
 
-static const unsigned char load_image3[144] = {
+const unsigned char load_image3[144] = {
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
     0x00, 0x3F, 0x80, 0x00, // ........ ..@@@@@@ @....... ........
@@ -163,12 +164,8 @@ static const unsigned char load_image3[144] = {
 // The main entry point of the kernel/program/OS and what the bootloader hands off to.
 //
 
-// Can't use local variables in a naked function (at least, the compiler won't allow it, though it can be done with assembly)
-// Make them static globals instead, which still keeps them essentially local (local to this file, at any rate).
-// They'll just take up some program RAM instead of stack space.
-static unsigned char swapped_image[sizeof(load_image2)] = {0};
-static char brandstring[48] = {0};
-static char Manufacturer_ID[13] = {0};
+// Can't use local arrays in a naked function (at least, the compiler won't allow it, though it can be done with assembly)
+// They'll just need to take up some program RAM instead of stack space as global variables instead.
 
 __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 {
@@ -183,7 +180,6 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 
   // Now initialize the system (Virtual mappings (identity-map), printf, AVX, any straggling control registers, HWP, maskable interrupts)
   System_Init(LP); // See System.c for what this does. One step is involves calling a function that can re-assign printf to a different GPU.
-
   // Main Body Start
 
 //  bitmap_bitswap(load_image, 12, 27, swapped_image);
@@ -197,7 +193,12 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
 
 
   Print_Loader_Params(LP);
-  Print_Segment_Registers();
+//  Print_Segment_Registers();
+
+  uint64_t ram = GetMaxMappedPhysicalAddress();
+  printf("MaxPhysAddr: %qu Bytes (= %qu GB), Hex: %#qx\r\n", ram, ram >> 30, ram);
+  ram = GuessInstalledSystemRam();
+  printf("Installed System RAM guess: %qu Bytes (= %qu GB), Hex: %#qx\r\n", ram, ram >> 30, ram);
 
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
   printf("%.48s\r\n", brandstring);
@@ -332,6 +333,7 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
   printf("Hello this is a sentence how far does it go before it wraps around?\nA\nB\nC\nD\nE\nF\nG\nH\nI\nJ\nK\nL\nM\nN\nO\nP\nQ\nR\nS\nT\nU\nV\nW\nX\nY\nZ\nYAY");
+// The VLA in these causes a page fault in ELF-format
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/2, 2, "FORMATTED STRING!! %#x", Global_Print_Info.index);
   formatted_string_anywhere_scaled(LP->GPU_Configs->GPUArray[0], 8, 8, 0x00FFFFFF, 0x00000000, 0,  LP->GPU_Configs->GPUArray[0].Info->VerticalResolution/4, 2, "FORMATTED %s STRING!! %s", "Heyo!", "Heyz!");
   printf("This printf shouldn't move due to formatted string invocation.");
@@ -382,7 +384,124 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
                 : // no clobbers
               );
 
-  LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
+  // For shutdown, need to know if system is ACPI hardware-reduced or using legacy ACPI. There's a flag in FADT.
+  Global_Print_Info.scale = 1; // Output scale for systemfont used by printf
+  Global_Print_Info.textscrollmode = Global_Print_Info.height*Global_Print_Info.scale; // Readjust quick scrolling
+
+  // Search for ACPI tables
+  uint8_t RSDPfound = 0;
+  uint64_t RSDP_index = 0;
+  printf("Acpi20GUID: %08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x\r\n",
+          Acpi20TableGuid.Data1,
+          Acpi20TableGuid.Data2,
+          Acpi20TableGuid.Data3,
+          Acpi20TableGuid.Data4[0],
+          Acpi20TableGuid.Data4[1],
+          Acpi20TableGuid.Data4[2],
+          Acpi20TableGuid.Data4[3],
+          Acpi20TableGuid.Data4[4],
+          Acpi20TableGuid.Data4[5],
+          Acpi20TableGuid.Data4[6],
+          Acpi20TableGuid.Data4[7]);
+  printf("%#qx\r\n", Acpi20TableGuid);
+
+  for(uint64_t i = 0; i < LP->Number_of_ConfigTables; i++)
+  {
+    printf("Table %llu GUID: %08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x\r\n", i,
+            LP->ConfigTables[i].VendorGuid.Data1,
+            LP->ConfigTables[i].VendorGuid.Data2,
+            LP->ConfigTables[i].VendorGuid.Data3,
+            LP->ConfigTables[i].VendorGuid.Data4[0],
+            LP->ConfigTables[i].VendorGuid.Data4[1],
+            LP->ConfigTables[i].VendorGuid.Data4[2],
+            LP->ConfigTables[i].VendorGuid.Data4[3],
+            LP->ConfigTables[i].VendorGuid.Data4[4],
+            LP->ConfigTables[i].VendorGuid.Data4[5],
+            LP->ConfigTables[i].VendorGuid.Data4[6],
+            LP->ConfigTables[i].VendorGuid.Data4[7]);
+
+    if(!(AVX_memcmp(&LP->ConfigTables[i].VendorGuid, &Acpi20TableGuid, 16, 0)))
+    {
+      printf("RSDP 2.0 found!\r\n");
+      RSDP_index = i;
+      RSDPfound = 2;
+    }
+  }
+  // If no RSDP 2.0, check for 1.0
+  if(!RSDPfound)
+  {
+    for(uint64_t i=0; i < LP->Number_of_ConfigTables; i++)
+    {
+      if(!(AVX_memcmp(&LP->ConfigTables[i].VendorGuid, &Acpi10TableGuid, 16, 0)))
+      {
+        printf("RSDP 1.0 found!\r\n");
+        RSDP_index = i;
+        RSDPfound = 1;
+      }
+    }
+  }
+
+  if(!RSDPfound)
+  {
+    printf("Invalid system: no RSDP.\r\n");
+    HaCF();
+  }
+
+  int is_hardware_reduced_ACPI = 0;
+  XSDT_STRUCT * xsdt = (XSDT_STRUCT*) ((RSDP_20_STRUCT *)LP->ConfigTables[RSDP_index].VendorTable)->XSDTAddress;
+
+  for(uint64_t i = 0; i < ((xsdt->SDTHeader.Length - sizeof(SDT_HEADER_STRUCT)) >> 3); i++)
+  {
+    if(!(AVX_memcmp(((SDT_HEADER_STRUCT*)xsdt->Entry[i])->Signature, "FACP", 4, 0)))
+    {
+      // Found FADT
+      uint32_t fadt_flags = *((uint32_t*) &((uint8_t*)xsdt->Entry[i])[112]); // Byte offset 112 has the flags
+      printf("FADT Flags: %#x\r\n", fadt_flags);
+      if(fadt_flags & (1 << 20))
+      {
+//        printf("Hardware-reduced ACPI\r\n");
+        is_hardware_reduced_ACPI = 1;
+      }
+
+      printf("hvi: %#qx\r\n", *((uint64_t*) &((uint8_t*)xsdt->Entry[i])[268])); // MsHyperV
+      // Done here
+      break;
+    }
+  }
+
+  // ResetSystem() isn't always implemented. It doesn't appear to be on my Dell--in fact, invoking it causes data near address 0x0 to be loaded
+  // into %rip, which then page faults because it loads a value of 0x7ff00000000, which would be 8188GB RAM. Fun fact: I only have 32GB. Page Fault!!
+  // Since this happens even when ResetSystem() is called right after ExitBootServices() (or even when no VMAP or paging has been set), this
+  // is squarely a firmware fault. This is why:
+  // https://docs.microsoft.com/en-us/windows-hardware/design/device-experiences/oem-uefi#runtime-requirements
+  // So GetTime(), SetTime(), and UpdateCapsule() all have the potential to be equally affected, because they aren't strictly needed by Windows.
+/*  if(is_hardware_reduced_ACPI) // Check HW_REDUCED_ACPI Flag in FADT, as HW-reduced ACPI mode uses EFI shutdown
+  {
+    LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
+  }
+  else
+  {
+    asm volatile ("hlt");
+    // ACPI shutdown
+
+    printf("Entering ACPI S5 state (shutting down...)\r\n");
+    ACPI_STATUS Acpi_Sleep_Status = AcpiEnterSleepStatePrep(ACPI_STATE_S5); // This handles all the TypeA and TypeB stuff
+    if(ACPI_SUCCESS(Acpi_Sleep_Status)) // We have S5
+    {
+      // ACPI S5 method
+      asm volatile ("cli");
+      AcpiEnterSleepState(ACPI_STATE_S5); // Should shut down here.
+
+      // Well if that didn't work...
+      LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
+    }
+    else // If no S5, resort to UEFI
+    {
+      LP->RTServices->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); // Shutdown the system
+    }
+  }*/
+  printf("What? Can this thing not shut down on its own?? Please force power off.\r\n");
+  HaCF();
 }
 // END MAIN
 
@@ -554,7 +673,9 @@ void Print_All_CRs_and_Some_Major_CPU_Features(void)
 
 void Print_Loader_Params(LOADER_PARAMS * LP)
 {
-  printf("Loader_Params check:\r\n Bootloader Version: %hu.%hu\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
+  printf("Loader_Params check:\r\n UEFI Version: %u.%u\r\n Bootloader Version: %u.%u\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
+  LP->UEFI_Version >> 16,
+  LP->UEFI_Version & 0xFFFF,
   LP->Bootloader_MajorVersion,
   LP->Bootloader_MinorVersion,
 
@@ -575,11 +696,12 @@ void Print_Loader_Params(LOADER_PARAMS * LP)
   print_utf16_as_utf8(LP->Kernel_Options, LP->Kernel_Options_Size);
   printf(", Kernel Options Size: %llu\r\n", LP->Kernel_Options_Size);
 
-  printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx, RSDP Addr: %#qx\r\n",
+  printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx\r\n ConfigTables Addr: %#qx, Number_of_ConfigTables: %llu\r\n",
   LP->RTServices,
   LP->GPU_Configs,
   LP->FileMeta,
-  LP->RSDP
+  LP->ConfigTables,
+  LP->Number_of_ConfigTables
   );
 }
 
@@ -610,7 +732,7 @@ void Print_Segment_Registers(void)
   uint64_t cs = read_cs();
   printf("CS: %#qx\r\n", cs);
 
-
+/*
   // TODO: remove this
   __m256i_u whaty = _mm256_set1_epi32(0x17181920);
   __m256i_u what2 = _mm256_set1_epi64x(0x1718192011223344);
@@ -632,6 +754,19 @@ void Print_Segment_Registers(void)
 //  asm volatile ("int $32");
 
   volatile uint64_t c = cs / (cs >> 10); // TODO: remove this lol
+*/
+  uint64_t pml4_addr = cr3 & -4096ULL;
+  uint64_t ddr = 0x4203000;
+//  uint64_t linear4739 = ((uint64_t*)pml4_addr)[0] & 0xfff; // what is intel talking about? these are flags
+  uint64_t pdp_addr = ((uint64_t*)pml4_addr)[0] & (-4096ULL ^ (1ULL << 63)); // bit 63 is NX, 11:0 are not addr
+  uint64_t pd_addr = ((uint64_t*)pdp_addr)[0] & (-4096ULL ^ (1ULL << 63));
+  uint64_t pt_addr = ((uint64_t*)pd_addr)[0] & (-4096ULL ^ (1ULL << 63));
+
+  for(uint64_t q = 0; q < 40; q++)
+  {
+    printf("%llu. pml4 data: %#qx | pdp data: %#qx | pd data: %#qx | pt data: %#qx\r\n", q, ((uint64_t*)pml4_addr)[q], ((uint64_t*)pdp_addr)[q], ((uint64_t*)pd_addr)[q], ((uint64_t*)pt_addr)[q]);
+  }
+
 }
 
 ////////////////////////////////////////////////////
@@ -642,9 +777,9 @@ void Print_Segment_Registers(void)
 Note:
 
 typedef enum {
-  EfiResetCold, // Power cycle (hard off/on)
-  EfiResetWarm, //
-  EfiResetShutdown // Uh, normal shutdown.
+  EfiResetCold, // Cold Reboot (essentially a hard power cycle)
+  EfiResetWarm, // Warm reboot
+  EfiResetShutdown // Uh, normal shutdown
 } EFI_RESET_TYPE;
 
 typedef

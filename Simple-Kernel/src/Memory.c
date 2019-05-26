@@ -189,6 +189,127 @@ uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr) // BaseAddr is a 64-bi
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
+//  GetMaxMappedPhysicalAddress: Get the Maximum Physical Address in the Memory Map
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Returns the highest physical address reported by the UEFI memory map, which is useful when working around memory holes.
+//
+
+uint64_t GetMaxMappedPhysicalAddress(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  uint64_t current_address = 0, max_address = 0;
+
+  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    current_address = Piece->PhysicalStart + EFI_PAGES_TO_SIZE(Piece->NumberOfPages);
+    if(current_address > max_address)
+    {
+      max_address = current_address;
+    }
+  }
+
+  return max_address;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  GetVisibleSystemRam: Calculate Total Visible System RAM
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Calculates the total visible (not hardware- or firmware-reserved) system RAM from the UEFI system memory map.
+//
+
+uint64_t GetVisibleSystemRam(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  uint64_t running_total = 0;
+
+  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if(
+        (Piece->Type != EfiMemoryMappedIO) &&
+        (Piece->Type != EfiMemoryMappedIOPortSpace) &&
+        (Piece->Type != EfiPalCode) &&
+        (Piece->Type != EfiPersistentMemory) &&
+        (Piece->Type != EfiMaxMemoryType)
+      )
+    {
+      running_total += EFI_PAGES_TO_SIZE(Piece->NumberOfPages);
+    }
+  }
+
+  return running_total;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  GetFreeSystemRam: Calculate Total Free System RAM
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Calculates the total EfiConventionalMemory from the UEFI system memory map.
+//
+
+uint64_t GetFreeSystemRam(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  uint64_t running_total = 0;
+
+  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if(Piece->Type == EfiConventionalMemory)
+    {
+      running_total += EFI_PAGES_TO_SIZE(Piece->NumberOfPages);
+    }
+  }
+
+  return running_total;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  GetFreePersistentRam: Calculate Total Free Non-Volatile System RAM
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Calculates the total EfiPersistentMemory from the UEFI system memory map.
+//
+
+uint64_t GetFreePersistentRam(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  uint64_t running_total = 0;
+
+  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if(Piece->Type == EfiPersistentMemory)
+    {
+      running_total += EFI_PAGES_TO_SIZE(Piece->NumberOfPages);
+    }
+  }
+
+  return running_total;
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  GuessInstalledRam: Attempt to Infer Total Installed System Ram
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Infers a value for the total installed system RAM from the UEFI memory map. This is basically an attempt to account for memory
+// holes that aren't remapped by the motherboard chipset. The UEFI/BIOS calculates the installed memory by directly reading the SPD
+// EEPROM, but not all system vendors correctly report system configuration information via SMBIOS, which does have a field for memory.
+//
+// This would be useful for systems that don't have a reliable way to get RAM size from the firmware.
+//
+
+uint64_t GuessInstalledSystemRam(void)
+{
+  uint64_t ram = GetVisibleSystemRam();
+  ram += (63 << 20); // The minimum DDR3 size is 64MB, so it seems like a reasonable offset.
+  return (ram & ~((64 << 20) - 1)); // This method will discard quantities < 64MB, but no one using x86 these days should be so limited.
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
 //  print_system_memmap: The Ultimate Debugging Tool
 //----------------------------------------------------------------------------------------------------------------------------------
 //
@@ -212,9 +333,10 @@ typedef struct {
 */
 
 // This array should match the EFI_MEMORY_TYPE enum in EfiTypes.h. If it doesn't, maybe the spec changed and this needs to be updated.
-// This is a global variable, which lets it be declared static. This prevents a stack overflow that could arise if it were local to its function of use.
-// Static arrays defined like this can actually be made very large.
-static const char mem_types[19][27] = {
+// This is a file scope global variable, which lets it be declared static. This prevents a stack overflow that could arise if it were
+// local to its function of use. Static arrays defined like this can actually be made very large, but they cannot be accessed by any
+// functions that are not explicitly defined in this file. It cannot be passed as an argument to outside functions, either.
+static const char mem_types[20][27] = {
     "EfiReservedMemoryType     ",
     "EfiLoaderCode             ",
     "EfiLoaderData             ",
@@ -233,7 +355,8 @@ static const char mem_types[19][27] = {
     "EfiMaxMemoryType          ",
     "malloc                    ", // EfiMaxMemoryType + 1
     "vmalloc                   ", // EfiMaxMemoryType + 2
-    "MemMap                    "  // EfiMaxMemoryType + 3
+    "MemMap                    ", // EfiMaxMemoryType + 3
+    "PageTables                "  // EfiMaxMemoryType + 4
 };
 
 void print_system_memmap(void)
@@ -297,7 +420,7 @@ void Setup_MemMap(void)
 
   // Map's gettin' evicted, gotta relocate.
   EFI_PHYSICAL_ADDRESS new_MemMap_base_address = ActuallyFreeAddress(numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
-  if(new_MemMap_base_address == -1)
+  if(new_MemMap_base_address == ~0ULL)
   {
     printf("Can't move MemMap for enlargement: malloc not usable.\r\n");
   }
@@ -386,15 +509,99 @@ void Setup_MemMap(void)
         Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
       }
       // Done modifying new map.
-
-      // TODO: Call mergecontiguousconventionalmemory here or something
-      ReclaimEfiBootServicesMemory();
-      // MergeContiguousConventionalMemory();
-      // Each allocate function should call an update memmap with address, size, memtype
-      // Every free call should contain a call to mergecontiguousconventionalmemory
     }
   }
 }
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  pagetable_alloc: Allocate Memory for Page Tables
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// Returns a 4k-aligned address of a region of size 'pagetable_size' specified for use by page tables
+//
+// EFI_PHYSICAL_ADDRESS is just a uint64_t.
+//
+
+EFI_PHYSICAL_ADDRESS pagetable_alloc(uint64_t pagetables_size)
+{
+  // All this does is take some EfiConventionalMemory and add one entry to the map
+
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  size_t numpages = EFI_SIZE_TO_PAGES(pagetables_size);
+
+  EFI_PHYSICAL_ADDRESS pagetable_address = ActuallyFreeAddress(numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
+  if(pagetable_address == ~0ULL)
+  {
+    printf("Not enough space for page tables. Unsafe to continue.\r\n");
+    HaCF();
+  }
+  else
+  {
+    // Zero out the destination
+    AVX_memset((void*)pagetable_address, 0, numpages << EFI_PAGE_SHIFT);
+
+    // Get a pointer for the descriptor corresponding to the address (scan the memory map to find it)
+    for(Piece = Global_Memory_Info.MemMap; (uint8_t*)Piece < ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+    {
+      if(Piece->PhysicalStart == pagetable_address)
+      { // Found it, Piece holds the spot now. Also, we know it's at the base of Piece->PhysicalStart of an EfiConventionalMemory area because we put it there with ActuallyFreeAddress.
+        break;
+      }
+    }
+
+    if((uint8_t*)Piece == ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize)) // This will be true if the loop didn't break
+    {
+      printf("Pagetable area not found. Unsafe to continue.\r\n");
+      HaCF();
+    }
+    else
+    {
+      // Mark the new area as PageTables (it's currently EfiConventionalMemory)
+      if(Piece->NumberOfPages == numpages) // Trivial case: The new space descriptor is just the right size and needs no splitting; saves a memory descriptor so MemMapSize doesn't need to be increased
+      {
+        Piece->Type = EfiMaxMemoryType + 4; // Special PageTables type
+        // Nothng to do for Pad, PhysicalStart, VirtualStart, NumberOfPages, and Attribute
+      }
+      else // Need to insert a memmap descriptor. Thanks to the way ActuallyFreeAddress works we know the area is at the base of the EfiConventionalMemory descriptor
+      {
+        // TODO: IMPORTANT: this needs to account for if the MemMap needs to be moved (call an update_memmap function based on "old setup_memmap")
+
+        // Make a temporary descriptor to hold current piece's values, but modified for PageTables
+        EFI_MEMORY_DESCRIPTOR new_descriptor_temp;
+        new_descriptor_temp.Type = EfiMaxMemoryType + 4; // Special PageTables type
+        new_descriptor_temp.Pad = Piece->Pad;
+        new_descriptor_temp.PhysicalStart = Piece->PhysicalStart;
+        new_descriptor_temp.VirtualStart = Piece->VirtualStart;
+        new_descriptor_temp.NumberOfPages = numpages;
+        new_descriptor_temp.Attribute = Piece->Attribute;
+
+        // Modify this EfiConventionalMemory descriptor (shrink it) to reflect its new values
+        Piece->PhysicalStart += (numpages << EFI_PAGE_SHIFT);
+        Piece->VirtualStart += (numpages << EFI_PAGE_SHIFT);
+        Piece->NumberOfPages -= numpages;
+
+        // Move (copy) the whole memmap that's above this piece (including this freshly modified piece) from this piece to one MemMapDescriptorSize over
+        AVX_memmove((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize, Piece, ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize) - (uint8_t*)Piece); // Pointer math to get size
+
+        // Insert the new piece (by overwriting the now-duplicated entry with new values)
+        // I.e. turn this piece into what was stored in the temporary descriptor above
+        Piece->Type = new_descriptor_temp.Type;
+        Piece->Pad = new_descriptor_temp.Pad;
+        Piece->PhysicalStart = new_descriptor_temp.PhysicalStart;
+        Piece->VirtualStart = new_descriptor_temp.VirtualStart;
+        Piece->NumberOfPages = new_descriptor_temp.NumberOfPages;
+        Piece->Attribute = new_descriptor_temp.Attribute;
+
+        // Update Global_Memory_Info with new MemMap size
+        Global_Memory_Info.MemMapSize += Global_Memory_Info.MemMapDescriptorSize;
+      }
+      // Done modifying map.
+    }
+  }
+
+  return pagetable_address;
+}
+
 
 //----------------------------------------------------------------------------------------------------------------------------------
 //  ActuallyFreeAddress: Find A Free Physical Memory Address, Bottom-Up
@@ -408,7 +615,6 @@ void Setup_MemMap(void)
 
 EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldAddress)
 {
-//  EFI_STATUS memmap_status;
   EFI_MEMORY_DESCRIPTOR * Piece;
 
   // Multiply NumberOfPages by EFI_PAGE_SIZE to get the end address... which should just be the start of the next section.
@@ -416,7 +622,7 @@ EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldA
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     // Within each compatible EfiConventionalMemory, look for space
-    if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= pages) && (Piece->PhysicalStart > OldAddress))
+    if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= pages) && (Piece->PhysicalStart >= OldAddress))
     {
       break;
     }
@@ -429,7 +635,7 @@ EFI_PHYSICAL_ADDRESS ActuallyFreeAddress(size_t pages, EFI_PHYSICAL_ADDRESS OldA
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return Piece->PhysicalStart;
@@ -483,7 +689,7 @@ EFI_PHYSICAL_ADDRESS ActuallyFreeAddressByPage(size_t pages, EFI_PHYSICAL_ADDRES
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses by 4kB page...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -595,7 +801,7 @@ EFI_PHYSICAL_ADDRESS AllocateFreeAddressByPage(size_t pages, EFI_PHYSICAL_ADDRES
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses by 4kB page...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -654,7 +860,7 @@ EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy16Bytes(size_t numbytes, EFI_PHYSICAL_
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses by 16 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -713,7 +919,7 @@ EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy32Bytes(size_t numbytes, EFI_PHYSICAL_
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses by 32 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -772,7 +978,7 @@ EFI_PHYSICAL_ADDRESS AllocateFreeAddressBy64Bytes(size_t numbytes, EFI_PHYSICAL_
 #ifdef MEMORY_CHECK_INFO
     printf("No more free physical addresses by 64 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -811,7 +1017,7 @@ EFI_VIRTUAL_ADDRESS VActuallyFreeAddress(size_t pages, EFI_VIRTUAL_ADDRESS OldAd
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return Piece->VirtualStart;
@@ -865,7 +1071,7 @@ EFI_VIRTUAL_ADDRESS VActuallyFreeAddressByPage(size_t pages, EFI_VIRTUAL_ADDRESS
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses by 4kB page...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -919,7 +1125,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressByPage(size_t pages, EFI_VIRTUAL_ADDRESS
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses by 4kB page...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -978,7 +1184,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy16Bytes(size_t numbytes, EFI_VIRTUAL_A
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses by 16 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -1037,7 +1243,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy32Bytes(size_t numbytes, EFI_VIRTUAL_A
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses by 32 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -1096,7 +1302,7 @@ EFI_VIRTUAL_ADDRESS VAllocateFreeAddressBy64Bytes(size_t numbytes, EFI_VIRTUAL_A
 #ifdef MEMORY_CHECK_INFO
     printf("No more free virtual addresses by 64 bytes...\r\n");
 #endif
-    return -1;
+    return ~0ULL;
   }
 
   return DiscoveredAddress;
@@ -1126,7 +1332,9 @@ void ReclaimEfiBootServicesMemory(void)
     }
   }
   // Done.
-  // TODO: call mergecontiguousconventionalmemory
+
+  // TODO: enable
+  //MergeContiguousConventionalMemory();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1152,7 +1360,9 @@ void ReclaimEfiLoaderCodeMemory(void)
     }
   }
   // Done.
-  // TODO: call mergecontiguousconventionalmemory
+
+  // TODO: enable
+  //MergeContiguousConventionalMemory();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1456,7 +1666,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
 
             // Map's gettin' evicted, gotta relocate.
             EFI_PHYSICAL_ADDRESS new_MemMap_base_address = ActuallyFreeAddress(new_numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
-            if(new_MemMap_base_address == -1)
+            if(new_MemMap_base_address == ~0ULL)
             {
               printf("Can't move memmap for enlargement: malloc not usable.\r\n");
               break;
@@ -1622,7 +1832,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
             size_t new_numpages = numpages + additional_pages;
 
             EFI_PHYSICAL_ADDRESS new_MemMap_base_address = ActuallyFreeAddress(new_numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
-            if(new_MemMap_base_address == -1)
+            if(new_MemMap_base_address == ~0ULL)
             {
               printf("Can't move memmap for enlargement: malloc not usable.\r\n");
               break;
@@ -1821,7 +2031,7 @@ void VAllocateMemory(EFI_VIRTUAL_ADDRESS address, size_t numbytes)
             size_t new_numpages = numpages + additional_pages;
 
             EFI_PHYSICAL_ADDRESS new_MemMap_base_address = ActuallyFreeAddress(new_numpages, 0); // This will only give addresses at the base of a chunk of EfiConventionalMemory
-            if(new_MemMap_base_address == -1)
+            if(new_MemMap_base_address == ~0ULL)
             {
               printf("Can't move memmap for enlargement: malloc not usable.\r\n");
               break;

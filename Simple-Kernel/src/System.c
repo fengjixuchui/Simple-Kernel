@@ -45,7 +45,7 @@ void System_Init(LOADER_PARAMS * LP)
   // This will modify the memory map (but not its size), and set Global_Memory_Info.MemMap.
   if(Set_Identity_VMAP(LP->RTServices) == NULL)
   {
-    Global_Memory_Info.MemMap = LP->Memory_Map; // No virtual addressing possible, evidently.
+    Global_Memory_Info.MemMap = LP->Memory_Map; // No virtual addressing possible, evidently. Reset the map to how it was before.
   }
   // Don't merge any regions on the map until after SetVirtualAddressMap() has been called. After that call, it can be modified safely.
 
@@ -83,7 +83,7 @@ void System_Init(LOADER_PARAMS * LP)
     }
   }
 
-// TODO: print memmap before and after to test
+// TODO: print memmap before and after to test malloc stuff
   print_system_memmap();
 
   // Make a replacement GDT since the UEFI one is in EFI Boot Services Memory.
@@ -96,10 +96,19 @@ void System_Init(LOADER_PARAMS * LP)
   // Set up the memory map for use with mallocX (X = 16, 32, 64)
   Setup_MemMap();
 
+  // Set up paging structures (requires memory map to be set up)
+  Setup_Paging();
+
+  // Reclaim Efi Boot Services memory now that GDT, IDT, and Paging have been set up
+  ReclaimEfiBootServicesMemory();
+
+  // Ditto for EfiLoaderCode, which is just where the bootloader was
+  ReclaimEfiLoaderCodeMemory();
+
   // HWP
   Enable_HWP();
 
-  // Interrupts
+  // Enable Maskable Interrupts TODO
   // Exceptions and Non-Maskable Interrupts are always enabled.
   // Enable_Maskable_Interrupts() here
 
@@ -520,7 +529,7 @@ void Enable_Maskable_Interrupts(void)
   }
   else
   {
-    uint64_t rflags2 = rflags | (~0xFFFFFFFFFFFFFDFF); // Set bit 9
+    uint64_t rflags2 = rflags | (1 << 9); // Set bit 9
 
     control_register_rw('f', rflags2, 1);
     rflags2 = control_register_rw('f', 0, 0);
@@ -631,7 +640,7 @@ uint8_t read_perfs_initial(uint64_t * perfs)
 
   // Disable maskable interrupts
   uint64_t rflags = control_register_rw('f', 0, 0);
-  uint64_t rflags2 = rflags & 0xFFFFFFFFFFFFFDFF; // Clear bit 9
+  uint64_t rflags2 = rflags & ~(1 << 9); // Clear bit 9
 
   control_register_rw('f', rflags2, 1);
   rflags2 = control_register_rw('f', 0, 0);
@@ -726,7 +735,7 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
 
     // Disable maskable interrupts
     rflags = control_register_rw('f', 0, 0);
-    rflags2 = rflags & 0xFFFFFFFFFFFFFDFF; // Clear bit 9
+    rflags2 = rflags & ~(1 << 9); // Clear bit 9
 
     control_register_rw('f', rflags2, 1);
     rflags2 = control_register_rw('f', 0, 0);
@@ -838,7 +847,7 @@ uint64_t get_CPU_freq(uint64_t * perfs, uint8_t avg_or_measure)
   // All done, so re-enable maskable interrupts
   // It is possible that RFLAGS changed since it was last read...
   rflags = control_register_rw('f', 0, 0);
-  rflags2 = rflags | (~0xFFFFFFFFFFFFFDFF); // Set bit 9
+  rflags2 = rflags | (1 << 9); // Set bit 9
 
   control_register_rw('f', rflags2, 1);
   rflags2 = control_register_rw('f', 0, 0);
@@ -1444,48 +1453,40 @@ void Setup_MinimalGDT(void)
   cs_update();
 }
 
-static const uint64_t ret_data = 0xE1FF; // "jmp *%rcx", flipped for little endian -- this jumps to the address stored in %rcx
-// static const uint64_t ret_data = 0xC3;
-// This also works (0xC3 is 'retq'), provided that there is no ASM code emitted between the end of the asm block and the end of the cs_update() function
-// (true of GCC -O3, for example, but not GCC -O0). Better & safer to use the jump to an address stored in %rcx. Thankfully x86 is little endian only.
-
 // See the bottom of this function for details about what exactly it's doing
 static void cs_update(void)
 {
   // Code segment is at index 1, and 0x08 >> 3 is 1. 0x08 is 8 in decimal.
   // Data segment is at index 2, and 0x10 >> 3 is 2. 0x10 is 16 in decimal.
-  asm volatile("mov $16, %%ax \n\t"
-               "mov %%ax, %%ds \n\t"
-               "mov %%ax, %%es \n\t"
-               "mov %%ax, %%fs \n\t"
-               "mov %%ax, %%gs \n\t"
-               "mov %%ax, %%ss \n\t"
+  asm volatile("mov $16, %ax \n\t" // Data segment index
+               "mov %ax, %ds \n\t"
+               "mov %ax, %es \n\t"
+               "mov %ax, %fs \n\t"
+               "mov %ax, %gs \n\t"
+               "mov %ax, %ss \n\t"
+               "movq $8, %rdx \n\t" // 64-bit code segment index
                // Store RIP offset, pointing to right after 'lretq'
-               "leaq 18(%%rip), %%rcx \n\t" // This is hardcoded to the size of the rest of this ASM block. %rip points to the next MOV instruction, +18 bytes puts it right after 'lretq'
-               "movq $8, %%rdx \n\t"
-               "leaq %[update_cs], %%rax \n\t"
-               "pushq %%rdx \n\t"
-               "pushq %%rax \n\t"
+               "leaq 4(%rip), %rax \n\t" // This is hardcoded to the size of the rest of this little ASM block. %rip points to the next instruction, +4 bytes puts it right after 'lretq'
+               "pushq %rdx \n\t"
+               "pushq %rax \n\t"
                "lretq \n\t" // NOTE: lretq and retfq are the same. lretq is supported by both GCC and Clang, while retfq works only with GCC. Either way, opcode is 0x48CB.
-               // The address loaded into %rcx points here (right after 'lretq'), so execution returns to this point without breaking compiler compatibility
-               : // No outputs
-               : [update_cs] "m" (ret_data)// Inputs
-               : // No clobbers
+               // The address loaded into %rax points here (right after 'lretq'), so execution returns to this point without breaking compiler compatibility
               );
 
   //
   // NOTE: Yes, this function is more than a little weird.
   //
   // cs_update() will have a 'ret'/'retq' (and maybe some other things) after the asm 'retfq'/'lretq'. It's
-  // fine, though, because "ret_data" contains a hardcoded jmp to get back to it. Why not just push an asm
+  // fine, though, because the asm contains a hardcoded jmp to get back to it. Why not just push an asm
   // label located right after 'lretq' that's been preloaded into %rax (so that the label address gets loaded
   // into the instruction pointer on 'lretq')? Well, it turns out that will load an address relative to the
   // kernel file image base in such a way that the address won't get relocated by the boot loader. Mysterious
-  // crashes ensue. This solves that.
+  // crashes ensue. Doing it this way solves that, and is fundamentally very similar since 4(%rip) is where the
+  // label would be, anyways.
   //
-  // That stated, I think the insanity here speaks for itself, especially since all this is *necessary* to
-  // modify the %cs register in 64-bit mode using 'retfq'. Could far jumps and far calls be used? Yes, but not
-  // very easily in inline ASM (far jumps in 64-bit mode are very limited: only memory-indirect absolute far
+  // That stated, I think the insanity here speaks for itself, especially since this is *necessary* to modify
+  // the %cs register in 64-bit mode using 'retfq'. Could far jumps and far calls be used? Yes, but not very
+  // easily in inline ASM (far jumps in 64-bit mode are very limited: only memory-indirect absolute far
   // jumps can change %cs). Also, using the 'lretq' trick maintains quadword alignment on the stack, which is
   // nice. So really we just have to deal with making farquad returns behave in a very controlled manner...
   // which includes accepting any resulting movie references from 2001. But hey, it works, and it shouldn't
@@ -1855,9 +1856,9 @@ void Setup_IDT(void)
   // ...                     ...                               ...
   // 255                    [255]                             [255]
   //
-  // Drag the bottom right corner of the cell with the above macro--there should be a
-  // little square there--and grin as 224 sequential interrupt functions technomagically
-  // appear. :)
+  // Drag the bottom right corner of the cell containing the above macro--there should
+  // be a little square there--and grin as 224 sequential interrupt functions
+  // technomagically appear. :)
   //
   // Adapted from: https://superuser.com/questions/559218/increment-numbers-inside-a-string
   //
@@ -1995,12 +1996,352 @@ static void set_BP_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
 //
 // UEFI sets up paging structures in EFI Boot Services Memory. Since that memory is to be reclaimed as free memory, there needs to be
 // valid paging structures elsewhere doing the job. This function takes care of that and sets up paging structures, ensuring that UEFI
-// data is not relied on.
+// data in boot services memory is not relied on. Specifically, this sets up identity or 1:1 paging using 1GB pages where possible.
 //
+// Extra note:
+// When using pages, one could follow the example of existing systems and use page files or virtual mappings. I personally
+// propose using 1GB pages as "work areas" for multiple cores, particularly since this framework includes no concept of "user space"
+// or "kernal space." This way, multiple cores or hyperthreads can each have their very own whole number of GBs to work in.
+//
+// Shared data/code pages can be marked by the 'G' (Global) bit, and the 'NX' (No eXecute) bit can be used if a page is only meant to
+// contain data. TLB flushing doesn't really matter here since address space switches don't occur: that's what the 'G' bit was originally
+// meant for as it would prevent the TLB from flushing a page so marked. The 'G' bit is ignored by the CPU hardware for this purpose if
+// CR4.PGE = 0, but for this use case it wouldn't really matter what value CR4.PGE is. I set it to 1 in case anyone wants to use it for
+// its intended purpose, like if someone wants to change CR3 and not invalidate certain pages in the TLB.
+//
+// In any case, it's a flexible system that works better the more RAM there is, and no swapping or adding/removing pages is necessary. It
+// really all comes down to users architecting how they want to use their system memory, though, and this is just one way. Also, the malloc()
+// functions provided by this framework are completely decoupled from this paging mechanism--they use the memory map directly, which is why
+// they can allocate 4kB memory even though Setup_Paging() sets up 1GB pages. That's important to keep in mind when making any changes.
+//
+
+// The outermost table (e.g. PML4, PML5) will always take up 4kB, so it can be defined statically like this.
+__attribute__((aligned(4096))) static uint64_t outermost_table[512] = {0};
+// Since inner tables may not exist for many entries, only the outermost table of the struct is guaranteed to be one table of 4kB bytes.
+// Statically allocating an area would otherwise take up a whole 1GB+2MB+4KB to account for fully-loaded 5-level paging with 1GB pages!
+// It would be 2MB+4KB for fully-loaded 4-level paging with 1GB pages, or 1GB+2MB+4KB for fully-loaded 4-level paging with 2MB pages.
+// Don't even consider using 4kB pages--the paging structures in total take up 512x those numbers worst-case... That's 512GB RAM eaten
+// up JUST for 4-level paging structures!
+
+// Page tables are all the same size...
+#define PAGE_TABLE_SIZE 512*8
 
 void Setup_Paging(void)
 {
   //TODO, can reclaim bootsrvdata after [_] this, [V] GDT, and [V] IDT
+  // Disable global pages since we're going to overhaul the page table and don't want anything lingering from UEFI
+  // Disable CR4.PGE
+  uint64_t cr4 = control_register_rw(4, 0, 0);
+  if(cr4 & (1 << 7)) // If on, turn off, else ignore
+  {
+    uint64_t cr4_2 = cr4 ^ (1 << 7); // Bit toggle
+    control_register_rw(4, cr4_2, 1);
+    cr4_2 = control_register_rw(4, 0, 0);
+    if(cr4_2 == cr4)
+    {
+      printf("Error disabling CR4.PGE.\r\n");
+    }
+  }
+
+  // Ok, how much RAM we got?
+
+  // The ACPI standard expects the UEFI memory map to describe *all installed memory* and not any virtual address spaces.
+  // This means the UEFI map can be used to get the total system memory (but not by adding up all the pages to due to the variable-sized "hole" from 0xA0000 to 0xFFFFF).
+  // See ACPI Specficiation 6.2A, Section 15.4 (UEFI Assumptions and Limitations)
+  uint64_t max_ram = GetMaxMappedPhysicalAddress();
+  printf("Total System RAM: %qu Bytes (= %qu GB), Hex: %#qx\r\n", max_ram, max_ram >> 30, max_ram);
+
+  // Check supported paging sizes (either 1GB paging is supported or we fall back to 2MiB: Sandy Bridge i7s, for example, can't do 1GB pages)
+  uint64_t rdx = 0;
+  asm volatile("cpuid"
+               : "=d" (rdx) // Outputs
+               : "a" (0x80000001) // The value to put into %rax
+               : "%rbx", "%rcx"// CPUID would clobber any of the abcd registers not listed explicitly (all are here, though)
+             );
+
+  if(rdx & (1 << 26))
+  {
+    // Use 1GB pages
+    printf("1 GB pages are available.\r\n");
+
+    // Do we have 5-level paging?
+    // Although Intel states it's still a draft, the Linux Kernel went ahead and added 5-level paging around 2016-2017, it seems. Well, I've
+    // also added it here for future use. Waaaaaaay future use. And even if the draft changes it isn't hard to modify this code, so no big deal.
+    //
+    // 5-level paging tables are crazy and can take up to 1GB+2MB+4KB space using 1GB pages. 512GB+1GB+2MB+4KB if using 2MB pages, and
+    // 256TB+512GB+1GB+2MB+4KB for 4k pages. Granted, that is for systems with ~128PB RAM... I guess nobody wanted to implement 512GB pages at
+    // the same time as 5-level paging? That would allow 5-level paging to work with quantities like 128PB and only use 2 tables, like 1GB pages
+    // with 4-level paging. That only takes up 2MB+4KB worst-case. Perhaps 512GB pages will come as a future extension to 5-level paging?
+    uint64_t cr4 = control_register_rw(4, 0, 0);
+    if(cr4 & (1 << 12)) // Check CR4.LA57 for 5-level paging support
+    {
+      // 5-level paging, 3 tables needed for 1GB pages
+      printf("5-level paging is active.\r\n");
+
+      if(max_ram > (1ULL << 57)) // 128PB is the max
+      {
+        printf("Hey! There's way too much RAM here. Is the year like 2050 or something?\r\nRAM will be limited to 128PB, the max allowed by 5-level paging wth 1GB pages.\r\n");
+        printf("At this point there's probably a new paging size (or a new paging mechanism? Is paging even used anymore?), which needs to be implmented in the code.\r\n");
+        printf("8K 120FPS displays must be mainstream by now, too...\r\n");
+      }
+
+      uint64_t max_pml5_entry = 1; // Always at least 1 entry
+
+      uint64_t last_pml4_table_max = 1; // Always at least 1 entry
+      uint64_t max_pml4_entry = 512;
+
+      uint64_t last_pdp_table_max = 512; // This will decrease to the correct size, but worst-case it will be 512 and account for exactly 512GB RAM
+      uint64_t max_pdp_entry = 512;
+
+      // PML5 can hold 512 PML4s
+      while(max_ram > (256ULL << 40))
+      {
+        max_pml5_entry++;
+        max_ram -= (256ULL << 40);
+      }
+      // The last PML5 is accounted for by initializing max_pml5_entry to 1.
+
+      if(max_pml5_entry > 512)
+      {
+        max_pml5_entry = 512; // If for whatever reason it comes to this some day
+      }
+
+      if(max_ram)
+      {
+        // Each PML4 entry (a PDP table) can account for 512GB RAM when using 1GB page sizes.
+        // As it stands PML4s can account for "only" 256TB each.
+        // This accounts for the number of PML4s in the last PML5.
+        while(max_ram > (512ULL << 30))
+        {
+          last_pml4_table_max++;
+          max_ram -= (512ULL << 30);
+        }
+        // Any leftover RAM is accounted for in PML4 by initializing last_pml4_table_max to 1.
+
+        if(last_pml4_table_max > 512)
+        {
+          last_pml4_table_max = 512; // If for whatever reason it comes to this some day
+        }
+
+        if(max_ram)
+        {
+          // The last PDP table may not be full
+          last_pdp_table_max = ( (max_ram + ((1 << 30) - 1)) & (~0ULL << 30) ) >> 30; // Catch any extra RAM into one more page
+
+          if(last_pdp_table_max > 512) // Extreme case RAM size truncation
+          {
+            last_pdp_table_max = 512;
+          }
+        }
+      }
+
+      // Now we have everything we need to know how much space the page tables are going to consume
+      uint64_t pml4_space = PAGE_TABLE_SIZE*max_pml5_entry;
+      uint64_t pdp_space = pml4_space*max_pml4_entry;
+
+      EFI_PHYSICAL_ADDRESS pml4_base_region = pagetable_alloc(pml4_space + pdp_space); // This zeroes out the area for us
+      EFI_PHYSICAL_ADDRESS pdp_base_region = pml4_base_region + pml4_space; // The point is to put pdp_space right on top of pml4_space
+
+      for(uint64_t pml5_entry = 0; pml5_entry < max_pml5_entry; pml5_entry++)
+      {
+        // Before adding any flags, set the 4k page-aligned address of pml4.
+        outermost_table[pml5_entry] = pml4_base_region + (pml5_entry << 12);
+
+        if(pml5_entry == (max_pml5_entry - 1))
+        {
+          max_pml4_entry = last_pml4_table_max;
+        }
+
+        for(uint64_t pml4_entry = 0; pml4_entry < max_pml4_entry; pml4_entry++)
+        {
+          // Before adding any flags, set the 4k page-aligned address of pdp.
+          ((uint64_t*)outermost_table[pml5_entry])[pml4_entry] = pdp_base_region + (((pml5_entry << 9) + pml4_entry) << 12);
+
+          if((pml5_entry == (max_pml5_entry - 1)) && (pml4_entry == (max_pml4_entry - 1))) // Check for special case of last pml4 entry, and if the last entry is a full table this'll account for that, too.
+          {
+            max_pdp_entry = last_pdp_table_max; // This correction only applies to the very last PDP
+          }
+
+          for(uint64_t pdp_entry = 0; pdp_entry < max_pdp_entry; pdp_entry++)
+          {
+            // pdp defines up to 512x 1GB entries. Only systems with more than 512GB RAM will have multiple PML4 entries. Systems with more than 256TB RAM wil have multiple PML5 entries.
+            ((uint64_t*)((uint64_t*)outermost_table[pml5_entry])[pml4_entry])[pdp_entry] = (((pml5_entry << 18) + (pml4_entry << 9) + pdp_entry) << 30) | (0x83); // Flags: NX[63] = 0, PAT[12] = 0, G[8] = 0, 1GB[7] = 1, D[6] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+          } // PDP
+
+          ((uint64_t*)outermost_table[pml5_entry])[pml4_entry] |= 0x3; // Now set outer flags: NX[63] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+        } // PML4
+
+        outermost_table[pml5_entry] |= 0x3; // Now set outer flags: NX[63] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+      } // PML5
+
+    }
+    else
+    {
+      // 4-level paging, 2 tables needed for 1GB pages
+      printf("4-level paging is active.\r\n");
+
+      if(max_ram > (1ULL << 48)) // 256TB is the max with 4-level paging; to get the full 4PB (1 << 52) supported by the AMD64 4-level paging spec would require 16GB pages that don't exist (except on IBM POWER5+ mainframes)...
+      {
+        printf("Hey! There's way too much RAM here and 5-level paging isn't enabled/supported.\r\nPlease contact your system vendor about this as it is a UEFI firmware issue.\r\nRAM will be limited to 256TB, the max allowed by 4-level paging.\r\n");
+      }
+
+      uint64_t max_pml4_entry = 1; // Always at least 1 entry
+
+      uint64_t last_pdp_table_max = 512; // This will decrease to the correct size, but worst-case it will be 512, e.g. exactly 512GB RAM
+      uint64_t max_pdp_entry = 512;
+
+      // Each PML4 entry (which points to a full PDP table) can account for 512GB RAM
+      while(max_ram > (512ULL << 30))
+      {
+        max_pml4_entry++;
+        max_ram -= (512ULL << 30);
+      }
+      // Any leftover RAM is accounted for in PML4 by initializing max_pml4_entry to 1.
+
+      if(max_pml4_entry > 512)
+      {
+        max_pml4_entry = 512; // If for whatever reason it comes to this some day
+      }
+
+      if(max_ram)
+      {
+        // The last PDP table won't be full
+        last_pdp_table_max = ( (max_ram + ((1 << 30) - 1)) & (~0ULL << 30) ) >> 30; // Catch any extra RAM into one more page
+
+        if(last_pdp_table_max > 512) // Extreme case (more than 256TB) RAM size truncation, else tables will overflow
+        {
+          last_pdp_table_max = 512;
+        }
+      }
+
+      // Now we have everything we need to know how much space the page tables are going to consume
+      uint64_t pdp_space = PAGE_TABLE_SIZE*max_pml4_entry;
+      EFI_PHYSICAL_ADDRESS pdp_base_region = pagetable_alloc(pdp_space); // This zeroes out the area for us
+
+//      printf("pdp base region: %#qx\r\n", pdp_base_region);
+
+      for(uint64_t pml4_entry = 0; pml4_entry < max_pml4_entry; pml4_entry++)
+      {
+        // Before adding any flags, allocate 4k page-aligned pdp belonging to this entry.
+        // This ensures we don't use up excess memory like in a statically allocated set of paging structures.
+        outermost_table[pml4_entry] = pdp_base_region + (pml4_entry << 12);
+
+        if(pml4_entry == (max_pml4_entry - 1)) // Check for special case of last pml4 entry, and if the last entry is a full table this'll account for that, too.
+        {
+          max_pdp_entry = last_pdp_table_max;
+        }
+
+        for(uint64_t pdp_entry = 0; pdp_entry < max_pdp_entry; pdp_entry++)
+        {
+          // pdp defines up to 512x 1GB entries. Only systems with more than 512GB RAM will have multiple PML4 entries.
+          ((uint64_t*)outermost_table[pml4_entry])[pdp_entry] = (((pml4_entry << 9) + pdp_entry) << 30) | (0x83); // Flags: NX[63] = 0, PAT[12] = 0, G[8] = 0, 1GB[7] = 1, D[6] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+        } // PDP
+
+        outermost_table[pml4_entry] |= 0x3; // Now set outer flags: NX[63] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+      } // PML4
+    }
+  }
+  else
+  {
+    // Use 2MB pages, need 3 tables, max 256TB RAM
+
+    printf("1GB pages are not supported, falling back to 2MB for the page tables instead. The system will still act like 1GB pages are used, however.\r\n");
+
+    if(max_ram > (1ULL << 48)) // 256TB is the max with 4-level pages
+    {
+      printf("Hey! There's way too much RAM here and 5-level paging isn't supported.\r\nRAM will be limited to 256TB, the max allowed by 4-level paging with 2MB pages.\r\n");
+      printf("In the event someone actually manages to trigger this error, please be aware that this situation means the paging tables alone will consume 1GB of RAM.\r\n");
+    }
+
+    uint64_t max_pml4_entry = 1; // Always at least 1 entry
+
+    uint64_t last_pdp_table_max = 1; // This will decrease to the correct size, but worst-case it will be 512, e.g. exactly 512GB RAM
+    uint64_t max_pdp_entry = 512;
+
+    // This is actually a fixed quantity in this case. All PDs will be full due to requiring whole number of GB for compatiblity with newer systems using 1GB pages.
+    uint64_t max_pd_entry = 512;
+
+    // Each PML4 entry (which points to a full PDP table) can account for 512GB RAM
+    while(max_ram > (512ULL << 30))
+    {
+      max_pml4_entry++;
+      max_ram -= (512ULL << 30);
+    }
+    // Any leftover RAM is accounted for in PML4 by initializing max_pml4_entry to 1.
+
+    if(max_pml4_entry > 512)
+    {
+      max_pml4_entry = 512; // If for whatever reason it comes to this some day
+    }
+
+    if(max_ram)
+    {
+      // The last PDP table won't be full
+      // But all PDs will be full since this is only allowing whole numbers of GB.
+      last_pdp_table_max = ( (max_ram + ((1 << 30) - 1)) & (~0ULL << 30) ) >> 30; // Catch any extra RAM into one more page
+
+      if(last_pdp_table_max > 512) // Extreme case (more than 256TB) RAM size truncation, else tables will overflow
+      {
+        last_pdp_table_max = 512;
+      }
+    }
+
+    // Now we have everything we need to know how much space the page tables are going to consume
+    uint64_t pdp_space = PAGE_TABLE_SIZE*max_pml4_entry;
+    uint64_t pd_space = pdp_space*max_pdp_entry;
+
+    EFI_PHYSICAL_ADDRESS pdp_base_region = pagetable_alloc(pdp_space + pd_space); // This zeroes out the area for us
+    EFI_PHYSICAL_ADDRESS pd_base_region = pdp_base_region + pdp_space; // The point is to put pd_space right on top of pdp_space
+
+    for(uint64_t pml4_entry = 0; pml4_entry < max_pml4_entry; pml4_entry++)
+    {
+      // Before adding any flags, allocate 4k page-aligned pdp belonging to this entry.
+      // This ensures we don't use up excess memory like in a statically allocated set of paging structures.
+      outermost_table[pml4_entry] = pdp_base_region + (pml4_entry << 12);
+
+      if(pml4_entry == (max_pml4_entry - 1)) // Check for special case of last pml4 entry, and if the last entry is a full table this'll account for that, too.
+      {
+        max_pdp_entry = last_pdp_table_max;
+      }
+
+      for(uint64_t pdp_entry = 0; pdp_entry < max_pdp_entry; pdp_entry++)
+      {
+        // pdp defines up to 512x 1GB entries. Only systems with more than 512GB RAM will have multiple PML4 entries.
+        ((uint64_t*)outermost_table[pml4_entry])[pdp_entry] = pd_base_region + (((pml4_entry << 9) + pdp_entry) << 12);
+
+        for(uint64_t pd_entry = 0; pd_entry < max_pd_entry; pd_entry++)
+        {
+          ((uint64_t*)((uint64_t*)outermost_table[pml4_entry])[pdp_entry])[pd_entry] = (((pml4_entry << 18) + (pdp_entry << 9) + pd_entry) << 21) | (0x83); // Flags: NX[63] = 0, PAT[12] = 0, G[8] = 0, 1GB[7] = 1, D[6] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+        }
+
+        ((uint64_t*)outermost_table[pml4_entry])[pdp_entry] |= 0x3;
+
+      } // PDP
+
+      outermost_table[pml4_entry] |= 0x3; // Now set outer flags: NX[63] = 0, A[5] = 0, PCD[4] = 0, PWT[3] = 0, U/S[2] = 0, R/W[1] = 1, P[0] = 1.
+    } // PML4
+  }
+
+  control_register_rw(3, (uint64_t)outermost_table, 1);
+  // Certain hypervisors like Hyper-V will crash right here if less than 4GB is allocated to the VM. Actually, it appears to be 3968MB or less, as Hyper-V mysteriously adds 2-128MB on top of memory allocated via settings.
+  // In Windows Event Viewer, Hyper-V-Worker will throw one of these errors:
+  // "<VM Name> was faulted because the guest executed an intercepting instruction not supported by Hyper-V instruction emulation."
+  // "<VM Name> was reset because an unrecoverable error occurred on a virtual processor that caused a triple fault."
+  // My guess is that this might be somehow related to Windows giving all applications 4GB virtual address space, combined with the fact that this operation changes the paging tables of a type-1 hypervisor.
+  // Or maybe Hyper-V has issues with using 1GB pages with < 4GB RAM? Or something to do with how Skylake has exactly 4 data TLBs for 1GB pages and "mov %cr3" causes TLB invalidation?
+
+  // Enable CR4.PGE
+  cr4 = control_register_rw(4, 0, 0);
+  if(!(cr4 & (1 << 7))) // If off, turn on, else ignore
+  {
+    uint64_t cr4_2 = cr4 ^ (1 << 7); // Bit toggle
+    control_register_rw(4, cr4_2, 1);
+    cr4_2 = control_register_rw(4, 0, 0);
+    if(cr4_2 == cr4)
+    {
+      printf("Error setting CR4.PGE bit.\r\n");
+    }
+  }
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -2439,11 +2780,15 @@ void cpu_features(uint64_t rax_value, uint64_t rcx_value)
     printf("rax: %#qx\r\nrbx: %#qx\r\nrcx: %#qx\r\nrdx: %#qx\r\n", rax, rbx, rcx, rdx);
     if(rdx & (1 << 26))
     {
-        printf("1 GB pages are available.\r\n");
+      printf("1 GB pages are available.\r\n");
+    }
+    else
+    {
+      printf("1 GB pages are not supported.\r\n");
     }
     if(rdx & (1 << 29))
     {
-        printf("Long Mode supported. (*Phew*)\r\n");
+      printf("Long Mode supported. (*Phew*)\r\n");
     }
   }
   else
@@ -2502,7 +2847,8 @@ __attribute__((aligned(64))) static volatile unsigned char user_xsave_space[XSAV
 //
 // Quick extra note: In embedded systems programming, interrupts are never supposed to do anything complicated; they're just supposed to set flags and terminate.
 // Abiding by this practice in general prevents all kinds of shenanigans from occuring during the execution of an interrupt handler. In complex hardware environments
-// like multiple cores and multiple processors, the fewer shenanigans in interrupts the better.
+// like multiple cores and multiple processors, the fewer shenanigans in interrupts the better. x86 in general appears to have attempted to destroy that simplicity, as
+// the page fault handlers in any of the major OSes (Windows, Mac, Linux) demonstrate with their paging/swap file mechanisms.
 //
 __attribute__((aligned(64))) static volatile unsigned char de_xsave_space[XSAVE_SIZE] = {0}; // #DE
 __attribute__((aligned(64))) static volatile unsigned char db_xsave_space[XSAVE_SIZE] = {0}; // #DB
@@ -3350,5 +3696,20 @@ void AVX_regdump(XSAVE_AREA_LAYOUT * layout_area)
   printf("ST/MM6: 0x%016qx%016qx\r\n", layout_area->st_mm_6[1], layout_area->st_mm_6[0]);
   printf("ST/MM7: 0x%016qx%016qx\r\n", layout_area->st_mm_7[1], layout_area->st_mm_7[0]);
 #endif
+}
 
+//----------------------------------------------------------------------------------------------------------------------------------
+//  HaCF: "Halt and Catch Fire"
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// This is basically a catch-all end of the line. If something gets here, there may be a problem that needs to be addressed. See
+// whatever accompanying error message is printed out before getting here for details.
+//
+
+void HaCF(void)
+{
+  while(1)
+  {
+    asm volatile("hlt");
+  }
 }
