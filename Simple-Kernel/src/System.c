@@ -1493,7 +1493,7 @@ static void cs_update(void)
   // cause issues with kernels loaded above 4GB RAM. It works great between Clang and GCC, too.
   //
   // The only issue with this method really is it'll screw up CPU return prediction for a tiny bit (for a
-  // small number of subsequent function calls, then it fixes itself). Only need this nonsense once, though!
+  // small number of subsequent function calls, then it fixes itself). Only need this once, though!
   //
 }
 
@@ -1999,20 +1999,22 @@ static void set_BP_interrupt_entry(uint64_t isr_num, uint64_t isr_addr)
 // data in boot services memory is not relied on. Specifically, this sets up identity or 1:1 paging using 1GB pages where possible.
 //
 // Extra note:
-// When using pages, one could follow the example of existing systems and use page files or virtual mappings. I personally
-// propose using 1GB pages as "work areas" for multiple cores, particularly since this framework includes no concept of "user space"
-// or "kernal space." This way, multiple cores or hyperthreads can each have their very own whole number of GBs to work in.
+// When using pages, one could follow the example of existing systems and use page files or virtual mappings. I personally propose
+// using 1GB pages as "work areas" for multiple cores, particularly since this framework includes no concept of "user space" or
+// "kernel space"--everything is in ring 0 when used as-is. Sectioning memory this way could allow multiple cores or hyperthreads to
+// each have their own whole number of GBs to work within.
 //
-// Shared data/code pages can be marked by the 'G' (Global) bit, and the 'NX' (No eXecute) bit can be used if a page is only meant to
-// contain data. TLB flushing doesn't really matter here since address space switches don't occur: that's what the 'G' bit was originally
-// meant for as it would prevent the TLB from flushing a page so marked. The 'G' bit is ignored by the CPU hardware for this purpose if
-// CR4.PGE = 0, but for this use case it wouldn't really matter what value CR4.PGE is. I set it to 1 in case anyone wants to use it for
-// its intended purpose, like if someone wants to change CR3 and not invalidate certain pages in the TLB.
+// In a system like this, shared data/code pages can be marked by the 'G' (Global) bit, and the 'NX' (No eXecute) bit can be used if a
+// page is only meant to contain data. TLB flushing doesn't really matter here since address space switches don't occur: that's what the
+// 'G' bit was originally meant for as it would prevent the TLB from flushing that page during a switch. The 'G' bit is ignored by the
+// CPU hardware for this purpose if CR4.PGE = 0, but for this use case it wouldn't really matter what value CR4.PGE is. I set it to 1 in
+// case anyone wants to use it for its intended purpose, like if someone wants to change CR3 and not invalidate certain pages in the TLB.
 //
 // In any case, it's a flexible system that works better the more RAM there is, and no swapping or adding/removing pages is necessary. It
-// really all comes down to users architecting how they want to use their system memory, though, and this is just one way. Also, the malloc()
-// functions provided by this framework are completely decoupled from this paging mechanism--they use the memory map directly, which is why
-// they can allocate 4kB memory even though Setup_Paging() sets up 1GB pages. That's important to keep in mind when making any changes.
+// really all comes down to users architecting how they want to use their system memory, though, and this is just one way. Also, the
+// malloc() functions provided by this framework are completely decoupled from the paging mechanism: they use the memory map directly,
+// which is why they can allocate 4kB memory even though Setup_Paging() sets up 1GB pages. That's important to keep in mind when making
+// any changes.
 //
 
 // The outermost table (e.g. PML4, PML5) will always take up 4kB, so it can be defined statically like this.
@@ -2028,7 +2030,6 @@ __attribute__((aligned(4096))) static uint64_t outermost_table[512] = {0};
 
 void Setup_Paging(void)
 {
-  //TODO, can reclaim bootsrvdata after [_] this, [V] GDT, and [V] IDT
   // Disable global pages since we're going to overhaul the page table and don't want anything lingering from UEFI
   // Disable CR4.PGE
   uint64_t cr4 = control_register_rw(4, 0, 0);
@@ -2043,13 +2044,13 @@ void Setup_Paging(void)
     }
   }
 
-  // Ok, how much RAM we got?
+  // Ok, how much mapped memory do we have that needs to be in CPU pages?
 
   // The ACPI standard expects the UEFI memory map to describe *all installed memory* and not any virtual address spaces.
   // This means the UEFI map can be used to get the total system memory (but not by adding up all the pages to due to the variable-sized "hole" from 0xA0000 to 0xFFFFF).
   // See ACPI Specficiation 6.2A, Section 15.4 (UEFI Assumptions and Limitations)
   uint64_t max_ram = GetMaxMappedPhysicalAddress();
-  printf("Total System RAM: %qu Bytes (= %qu GB), Hex: %#qx\r\n", max_ram, max_ram >> 30, max_ram);
+//  printf("Total Mapped Memory: %qu Bytes (= %qu GB), Hex: %#qx\r\n", max_ram, max_ram >> 30, max_ram);
 
   // Check supported paging sizes (either 1GB paging is supported or we fall back to 2MiB: Sandy Bridge i7s, for example, can't do 1GB pages)
   uint64_t rdx = 0;

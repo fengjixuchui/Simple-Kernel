@@ -192,7 +192,11 @@ uint8_t VerifyZeroMem(size_t NumBytes, uint64_t BaseAddr) // BaseAddr is a 64-bi
 //  GetMaxMappedPhysicalAddress: Get the Maximum Physical Address in the Memory Map
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Returns the highest physical address reported by the UEFI memory map, which is useful when working around memory holes.
+// Returns the highest physical address reported by the UEFI memory map, which is useful when working around memory holes and setting
+// up/working with paging. The returned value is 1 byte over the last useable address, meaning it is the total size of the physical
+// address space. Subtract 1 byte from the returned value to get the maximum usable mapped physical address.
+//
+// 0 will only be returned if there aren't any entries in the map, which should never happen anyways.
 //
 
 uint64_t GetMaxMappedPhysicalAddress(void)
@@ -200,7 +204,7 @@ uint64_t GetMaxMappedPhysicalAddress(void)
   EFI_MEMORY_DESCRIPTOR * Piece;
   uint64_t current_address = 0, max_address = 0;
 
-  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
+  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the maximum addressable memory location based on installed RAM size.
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     current_address = Piece->PhysicalStart + EFI_PAGES_TO_SIZE(Piece->NumberOfPages);
@@ -217,7 +221,8 @@ uint64_t GetMaxMappedPhysicalAddress(void)
 //  GetVisibleSystemRam: Calculate Total Visible System RAM
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Calculates the total visible (not hardware- or firmware-reserved) system RAM from the UEFI system memory map.
+// Calculates the total visible (not hardware- or firmware-reserved) system RAM from the UEFI system memory map. This is mainly meant
+// to help identify any memory holes in the installed RAM (e.g. there's often one at 0xA0000 to 0xFFFFF).
 //
 
 uint64_t GetVisibleSystemRam(void)
@@ -225,7 +230,6 @@ uint64_t GetVisibleSystemRam(void)
   EFI_MEMORY_DESCRIPTOR * Piece;
   uint64_t running_total = 0;
 
-  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     if(
@@ -255,7 +259,6 @@ uint64_t GetFreeSystemRam(void)
   EFI_MEMORY_DESCRIPTOR * Piece;
   uint64_t running_total = 0;
 
-  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     if(Piece->Type == EfiConventionalMemory)
@@ -279,7 +282,6 @@ uint64_t GetFreePersistentRam(void)
   EFI_MEMORY_DESCRIPTOR * Piece;
   uint64_t running_total = 0;
 
-  // Go through the system memory map, adding the page sizes to PhysicalStart. Returns the largest number found, which should be the installed RAM size per spec.
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     if(Piece->Type == EfiPersistentMemory)
@@ -607,7 +609,7 @@ EFI_PHYSICAL_ADDRESS pagetable_alloc(uint64_t pagetables_size)
 //  ActuallyFreeAddress: Find A Free Physical Memory Address, Bottom-Up
 //----------------------------------------------------------------------------------------------------------------------------------
 //
-// Returns the next EfiConventionalMemory area that is > the supplied OldAddress.
+// Returns the next EfiConventionalMemory area that is >= the supplied OldAddress.
 //
 // pages: number of pages needed
 // OldAddress: An baseline address to search bottom-up from
@@ -1004,7 +1006,7 @@ EFI_VIRTUAL_ADDRESS VActuallyFreeAddress(size_t pages, EFI_VIRTUAL_ADDRESS OldAd
   for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
   {
     // Within each compatible EfiConventionalMemory, look for space
-    if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= pages) && (Piece->VirtualStart > OldAddress))
+    if((Piece->Type == EfiConventionalMemory) && (Piece->NumberOfPages >= pages) && (Piece->VirtualStart >= OldAddress))
     {
       break;
     }
@@ -1333,8 +1335,7 @@ void ReclaimEfiBootServicesMemory(void)
   }
   // Done.
 
-  // TODO: enable
-  //MergeContiguousConventionalMemory();
+  MergeContiguousConventionalMemory();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1361,8 +1362,7 @@ void ReclaimEfiLoaderCodeMemory(void)
   }
   // Done.
 
-  // TODO: enable
-  //MergeContiguousConventionalMemory();
+  MergeContiguousConventionalMemory();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -1398,6 +1398,7 @@ void MergeContiguousConventionalMemory(void)
           // Found one.
           // Add this entry's pages to Piece and delete this entry.
           Piece->NumberOfPages += Piece2-> NumberOfPages;
+
           AVX_memset(Piece2, 0, Global_Memory_Info.MemMapDescriptorSize);
           AVX_memmove(Piece2, (uint8_t*)Piece2 + Global_Memory_Info.MemMapDescriptorSize, ((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize) - ((uint8_t*)Piece2 + Global_Memory_Info.MemMapDescriptorSize));
 
@@ -1406,6 +1407,11 @@ void MergeContiguousConventionalMemory(void)
 
           // Zero out the entry that used to be at the end
           AVX_memset((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize, 0, Global_Memory_Info.MemMapDescriptorSize);
+
+          // Decrement Piece2 one descriptor to check this one again, since after modification there may be more to merge
+          Piece2 = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece2 - Global_Memory_Info.MemMapDescriptorSize);
+          // Refresh PhysicalEnd with the new size
+          PhysicalEnd = Piece->PhysicalStart + (Piece->NumberOfPages << EFI_PAGE_SHIFT);
         }
       } // End inner for loop
 
@@ -1531,6 +1537,47 @@ void MergeContiguousConventionalMemory(void)
   }
 
   // Done
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//  ZeroAllConventionalMemory: Zero Out ALL EfiConventionalMemory
+//----------------------------------------------------------------------------------------------------------------------------------
+//
+// This function goes through the memory map and zeroes out all EfiConventionalMemory areas. Returns 0 on success, else returns the
+// base physical address of the last region that could not be completely zeroed.
+//
+// USE WITH CAUTION!!
+// Firmware bugs like this could really cause problems with this function: https://mjg59.dreamwidth.org/11235.html
+//
+// Also, buggy firmware that uses Boot Service memory when invoking runtime services will fail to work after this function if
+// ReclaimEfiBootServicesMemory() has been used beforehand.
+//
+
+EFI_PHYSICAL_ADDRESS ZeroAllConventionalMemory(void)
+{
+  EFI_MEMORY_DESCRIPTOR * Piece;
+  EFI_PHYSICAL_ADDRESS exit_value = 0;
+
+  // Check for EfiConventionalMemory
+  for(Piece = Global_Memory_Info.MemMap; Piece < (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Global_Memory_Info.MemMap + Global_Memory_Info.MemMapSize); Piece = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)Piece + Global_Memory_Info.MemMapDescriptorSize))
+  {
+    if(Piece->Type == EfiConventionalMemory)
+    {
+      AVX_memset((void *)Piece->PhysicalStart, 0, EFI_PAGES_TO_SIZE(Piece->NumberOfPages));
+
+      if(VerifyZeroMem(EFI_PAGES_TO_SIZE(Piece->NumberOfPages), Piece->PhysicalStart))
+      {
+        printf("Area Not Zeroed! Base Physical Address: %#qx, Pages: %llu\r\n", Piece->PhysicalStart, Piece->NumberOfPages);
+        exit_value = Piece->PhysicalStart;
+      }
+      else
+      {
+        printf("Zeroed! Base Physical Address: %#qx, Pages: %llu\r\n", Piece->PhysicalStart, Piece->NumberOfPages);
+      }
+    }
+  }
+  // Done.
+  return exit_value;
 }
 
 /*

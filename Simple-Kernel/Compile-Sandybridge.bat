@@ -3,7 +3,7 @@
 rem
 rem =================================
 rem
-rem VERSION 1.04
+rem VERSION 1.06
 rem
 rem GCC (MinGW-w64) Kernel64 Windows Compile Script
 rem
@@ -110,7 +110,7 @@ rem Loop through and compile the backend .c files, which are listed in c_files_w
 rem
 
 @echo %echo_stat%
-FOR /F "tokens=*" %%f IN ('type "%CurDir%\c_files_windows.txt"') DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%%~df%%~pf%%~nf.out" -MF"%%~df%%~pf%%~nf.d" -MT"%%~df%%~pf%%~nf.o" -o "%%~df%%~pf%%~nf.o" "%%~ff"
+FOR /F "tokens=*" %%f IN ('type "%CurDir%\c_files_windows.txt"') DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-exceptions -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%%~df%%~pf%%~nf.out" -MF"%%~df%%~pf%%~nf.d" -MT"%%~df%%~pf%%~nf.o" -o "%%~df%%~pf%%~nf.o" "%%~ff"
 @echo off
 
 rem
@@ -118,7 +118,7 @@ rem Compile the .c files in the startup folder (if any exist)
 rem
 
 @echo %echo_stat%
-FOR %%f IN ("%CurDir2%/startup/*.c") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/startup/%%~nf.out" -MF"%CurDir2%/startup/%%~nf.d" -MT"%CurDir2%/startup/%%~nf.o" -o "%CurDir2%/startup/%%~nf.o" "%CurDir2%/startup/%%~nf.c"
+FOR %%f IN ("%CurDir2%/startup/*.c") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-exceptions -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -O3 -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/startup/%%~nf.out" -MF"%CurDir2%/startup/%%~nf.d" -MT"%CurDir2%/startup/%%~nf.o" -o "%CurDir2%/startup/%%~nf.o" "%CurDir2%/startup/%%~nf.c"
 @echo off
 
 rem
@@ -127,7 +127,7 @@ rem initialize the system)
 rem
 
 @echo %echo_stat%
-FOR %%f IN ("%CurDir2%/startup/*.S") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/startup/%%~nf.out" -MF"%CurDir2%/startup/%%~nf.d" -MT"%CurDir2%/startup/%%~nf.o" -o "%CurDir2%/startup/%%~nf.o" "%CurDir2%/startup/%%~nf.S"
+FOR %%f IN ("%CurDir2%/startup/*.S") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-exceptions -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/startup/%%~nf.out" -MF"%CurDir2%/startup/%%~nf.d" -MT"%CurDir2%/startup/%%~nf.o" -o "%CurDir2%/startup/%%~nf.o" "%CurDir2%/startup/%%~nf.S"
 @echo off
 
 rem
@@ -135,7 +135,7 @@ rem Compile user .c files
 rem
 
 @echo %echo_stat%
-FOR %%f IN ("%CurDir2%/src/*.c") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/src/%%~nf.out" -MF"%CurDir2%/src/%%~nf.d" -MT"%CurDir2%/src/%%~nf.o" -o "%CurDir2%/src/%%~nf.o" "%CurDir2%/src/%%~nf.c"
+FOR %%f IN ("%CurDir2%/src/*.c") DO "%GCC_FOLDER_NAME%\bin\gcc.exe" -ffreestanding -march=sandybridge -mavx -fno-exceptions -fno-stack-protector -fno-stack-check -fno-strict-aliasing -fno-merge-all-constants -mno-stack-arg-probe -m64 -mno-red-zone -maccumulate-outgoing-args --std=gnu11 -I!HFILES! -Og -g3 -Wall -Wextra -Wdouble-promotion -fmessage-length=0 -ffunction-sections -c -MMD -MP -Wa,-adghlmns="%CurDir2%/src/%%~nf.out" -MF"%CurDir2%/src/%%~nf.d" -MT"%CurDir2%/src/%%~nf.o" -o "%CurDir2%/src/%%~nf.o" "%CurDir2%/src/%%~nf.c"
 @echo off
 
 rem
@@ -172,9 +172,19 @@ rem
 rem NOTE: Linkerscripts may be needed for bigger projects
 rem
 
-rem "%GCC_FOLDER_NAME%\bin\gcc.exe" -march=sandybridge -mavx -s -T%LinkerScript% -nostdlib -Wl,-e,kernel_main -Wl,--subsystem,10 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.exe" @"objects.list"
+rem MINGW-w64 has a pretty serious issue where it strips relocation tables by default for PE images by default. Using -Wl,--dynamicbase,--export-all-symbols prevents it from doing so.
+rem This is also needed for ASLR compatibility, as ASLR and kernel loading are basically the same...
+rem This is why many UEFI build systems using MINGW-w64 pass -Wl,-dll to the linker, since DLLs are by definition relocatable and thus need to keep the reloc table.
+rem
+rem See these links for more details:
+rem https://stackoverflow.com/questions/19451652/mingw-relocation-table
+rem https://insights.sei.cmu.edu/cert/2018/08/when-aslr-is-not-really-aslr---the-case-of-incorrect-assumptions-and-bad-defaults.html
+rem https://sourceware.org/bugzilla/show_bug.cgi?id=19011
+rem https://sourceforge.net/p/mingw-w64/mailman/message/31034877/
+
+rem "%GCC_FOLDER_NAME%\bin\gcc.exe" -march=sandybridge -mavx -s -T%LinkerScript% -nostdlib -Wl,-e,kernel_main -Wl,--dynamicbase,--export-all-symbols -Wl,--subsystem,10 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.exe" @"objects.list"
 @echo on
-"%GCC_FOLDER_NAME%\bin\gcc.exe" -march=sandybridge -mavx -s -nostdlib -Wl,-e,kernel_main -Wl,--subsystem,10 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.exe" @"objects.list"
+"%GCC_FOLDER_NAME%\bin\gcc.exe" -march=sandybridge -mavx -s -nostdlib -Wl,-e,kernel_main -Wl,--dynamicbase,--export-all-symbols -Wl,--subsystem,10 -Wl,-Map=output.map -Wl,--gc-sections -o "Kernel64-Sandybridge.exe" @"objects.list"
 @echo off
 rem Remove -s in the above command to keep debug symbols in the output binary.
 

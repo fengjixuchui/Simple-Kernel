@@ -191,14 +191,8 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
     bitmap_anywhere_scaled(LP->GPU_Configs->GPUArray[k], swapped_image, 24, 27, 0x0000FFFF, 0xFF000000, ((LP->GPU_Configs->GPUArray[k].Info->HorizontalResolution - 5*27) >>  1), ((LP->GPU_Configs->GPUArray[k].Info->VerticalResolution - 5*24) >> 1), 5);
   }
 
-
   Print_Loader_Params(LP);
 //  Print_Segment_Registers();
-
-  uint64_t ram = GetMaxMappedPhysicalAddress();
-  printf("MaxPhysAddr: %qu Bytes (= %qu GB), Hex: %#qx\r\n", ram, ram >> 30, ram);
-  ram = GuessInstalledSystemRam();
-  printf("Installed System RAM guess: %qu Bytes (= %qu GB), Hex: %#qx\r\n", ram, ram >> 30, ram);
 
   Get_Brandstring((uint32_t*)brandstring); // Returns a char* pointer to brandstring. Don't need it here, though.
   printf("%.48s\r\n", brandstring);
@@ -207,6 +201,10 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
   printf("%s\r\n\n", Manufacturer_ID);
 
   print_system_memmap();
+  printf("Total EfiConventionalMemory: %llu\r\n", GetFreeSystemRam());
+
+  ZeroAllConventionalMemory();
+
 /*
   printf("Avg CPU freq: %qu\r\n", get_CPU_freq(NULL, 0));
   uint64_t perfcounters[2] = {1, 1};
@@ -402,8 +400,10 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
           Acpi20TableGuid.Data4[4],
           Acpi20TableGuid.Data4[5],
           Acpi20TableGuid.Data4[6],
-          Acpi20TableGuid.Data4[7]);
-  printf("%#qx\r\n", Acpi20TableGuid);
+          Acpi20TableGuid.Data4[7]
+        );
+
+//  printf("%#qx\r\n", Acpi20TableGuid);
 
   for(uint64_t i = 0; i < LP->Number_of_ConfigTables; i++)
   {
@@ -418,7 +418,8 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
             LP->ConfigTables[i].VendorGuid.Data4[4],
             LP->ConfigTables[i].VendorGuid.Data4[5],
             LP->ConfigTables[i].VendorGuid.Data4[6],
-            LP->ConfigTables[i].VendorGuid.Data4[7]);
+            LP->ConfigTables[i].VendorGuid.Data4[7]
+          );
 
     if(!(AVX_memcmp(&LP->ConfigTables[i].VendorGuid, &Acpi20TableGuid, 16, 0)))
     {
@@ -469,7 +470,7 @@ __attribute__((naked)) void kernel_main(LOADER_PARAMS * LP) // Loader Parameters
     }
   }
 
-  // ResetSystem() isn't always implemented. It doesn't appear to be on my Dell--in fact, invoking it causes data near address 0x0 to be loaded
+  // EFI ResetSystem() isn't always implemented. It doesn't appear to be on my Dell--in fact, invoking it causes data near address 0x0 to be loaded
   // into %rip, which then page faults because it loads a value of 0x7ff00000000, which would be 8188GB RAM. Fun fact: I only have 32GB. Page Fault!!
   // Since this happens even when ResetSystem() is called right after ExitBootServices() (or even when no VMAP or paging has been set), this
   // is squarely a firmware fault. This is why:
@@ -673,9 +674,19 @@ void Print_All_CRs_and_Some_Major_CPU_Features(void)
 
 void Print_Loader_Params(LOADER_PARAMS * LP)
 {
-  printf("Loader_Params check:\r\n UEFI Version: %u.%u\r\n Bootloader Version: %u.%u\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
-  LP->UEFI_Version >> 16,
-  LP->UEFI_Version & 0xFFFF,
+  printf("Loader_Params check:\r\n UEFI Version: %u.%u", LP->UEFI_Version >> 16, (LP->UEFI_Version & 0xFFFF) / 10);
+  if((LP->UEFI_Version & 0xFFFF) % 10)
+  {
+    printf(".%u\r\n", (LP->UEFI_Version & 0xFFFF) % 10);
+  }
+  else
+  {
+    printf("\r\n");
+  }
+  // The above UEFI version printing logic is explained in V2.2 of https://github.com/KNNSpeed/Simple-UEFI-Bootloader, and is how
+  // UEFI version numbers are supposed to be represented per the "EFI_TABLE_HEADER" section in UEFI specification documents.
+
+  printf(" Bootloader Version: %u.%u\r\n MemMap Desc Ver: %u, MemMap Desc Size: %llu, MemMap Addr: %#qx, MemMap Size: %llu\r\n Kernel Base: %#qx, Kernel Pages: %llu\r\n",
   LP->Bootloader_MajorVersion,
   LP->Bootloader_MinorVersion,
 
@@ -690,10 +701,13 @@ void Print_Loader_Params(LOADER_PARAMS * LP)
 
   printf(" ESP Root Path: ");
   print_utf16_as_utf8(LP->ESP_Root_Device_Path, LP->ESP_Root_Size);
+
   printf(", ESP Root Size: %llu\r\n Kernel Path: ", LP->ESP_Root_Size);
   print_utf16_as_utf8(LP->Kernel_Path, LP->Kernel_Path_Size);
+
   printf(", Kernel Path Size: %llu\r\n Kernel Options: ", LP->Kernel_Path_Size);
   print_utf16_as_utf8(LP->Kernel_Options, LP->Kernel_Options_Size);
+
   printf(", Kernel Options Size: %llu\r\n", LP->Kernel_Options_Size);
 
   printf(" RTServices Addr: %#qx, GPU_Configs Addr: %#qx, FileMeta Addr: %#qx\r\n ConfigTables Addr: %#qx, Number_of_ConfigTables: %llu\r\n",
@@ -756,8 +770,7 @@ void Print_Segment_Registers(void)
   volatile uint64_t c = cs / (cs >> 10); // TODO: remove this lol
 */
   uint64_t pml4_addr = cr3 & -4096ULL;
-  uint64_t ddr = 0x4203000;
-//  uint64_t linear4739 = ((uint64_t*)pml4_addr)[0] & 0xfff; // what is intel talking about? these are flags
+
   uint64_t pdp_addr = ((uint64_t*)pml4_addr)[0] & (-4096ULL ^ (1ULL << 63)); // bit 63 is NX, 11:0 are not addr
   uint64_t pd_addr = ((uint64_t*)pdp_addr)[0] & (-4096ULL ^ (1ULL << 63));
   uint64_t pt_addr = ((uint64_t*)pd_addr)[0] & (-4096ULL ^ (1ULL << 63));

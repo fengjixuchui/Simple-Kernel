@@ -584,15 +584,7 @@ typedef struct __attribute__((packed)) {
 //----------------------------------------------------------------------------------------------------------------------------------
 // Global Variables
 //----------------------------------------------------------------------------------------------------------------------------------
-/*
-// Configuration Table GUIDs
-extern EFI_GUID MpsTableGuid;
-extern EFI_GUID Acpi10TableGuid;
-extern EFI_GUID Acpi20TableGuid;
-extern EFI_GUID SmbiosTableGuid;
-extern EFI_GUID Smbios3TableGuid;
-extern EFI_GUID SalSystemTableGuid;
-*/
+
 extern GLOBAL_MEMORY_INFO_STRUCT Global_Memory_Info;
 extern GLOBAL_PRINT_INFO_STRUCT Global_Print_Info;
 
@@ -706,6 +698,7 @@ void Setup_MemMap(void);
 void ReclaimEfiBootServicesMemory(void);
 void ReclaimEfiLoaderCodeMemory(void);
 void MergeContiguousConventionalMemory(void);
+EFI_PHYSICAL_ADDRESS ZeroAllConventionalMemory(void);
 EFI_PHYSICAL_ADDRESS pagetable_alloc(uint64_t pagetables_size);
 
   // For physical addresses
